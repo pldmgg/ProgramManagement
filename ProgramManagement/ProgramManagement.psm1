@@ -1,1407 +1,2337 @@
 [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls"
 
-# Get public and private function definition files.
-[array]$Public  = Get-ChildItem -Path "$PSScriptRoot\Public\*.ps1" -ErrorAction SilentlyContinue
-[array]$Private = Get-ChildItem -Path "$PSScriptRoot\Private\*.ps1" -ErrorAction SilentlyContinue
+function GetElevation {
+    if ($PSVersionTable.PSEdition -eq "Desktop" -or $PSVersionTable.Platform -eq "Win32NT" -or $PSVersionTable.PSVersion.Major -le 5) {
+        [System.Security.Principal.WindowsPrincipal]$currentPrincipal = New-Object System.Security.Principal.WindowsPrincipal(
+            [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        )
 
-# Dot source the Private functions
-foreach ($import in $Private) {
-    try {
-        . $import.FullName
+        [System.Security.Principal.WindowsBuiltInRole]$administratorsRole = [System.Security.Principal.WindowsBuiltInRole]::Administrator
+
+        if($currentPrincipal.IsInRole($administratorsRole)) {
+            return $true
+        }
+        else {
+            return $false
+        }
     }
-    catch {
-        Write-Error -Message "Failed to import function $($import.FullName): $_"
+    
+    if ($PSVersionTable.Platform -eq "Unix") {
+        if ($(whoami) -eq "root") {
+            return $true
+        }
+        else {
+            return $false
+        }
     }
 }
 
-# Public Functions
+function Get-NativePath {
+    [CmdletBinding()]
+    Param( 
+        [Parameter(Mandatory=$True)]
+        [string[]]$PathAsStringArray
+    )
 
+    $PathAsStringArray = foreach ($pathPart in $PathAsStringArray) {
+        $SplitAttempt = $pathPart -split [regex]::Escape([IO.Path]::DirectorySeparatorChar)
+        
+        if ($SplitAttempt.Count -gt 1) {
+            foreach ($obj in $SplitAttempt) {
+                $obj
+            }
+        }
+        else {
+            $pathPart
+        }
+    }
+    $PathAsStringArray = $PathAsStringArray -join [IO.Path]::DirectorySeparatorChar
 
-<#
-    .SYNOPSIS
-        Creates an Elevated (i.e. "Run As Administrator") PSSession for the current user in the current PowerShell Session.
+    $PathAsStringArray
 
-    .DESCRIPTION
-        Using WSMan's CredSSP Authentication mechanism, this function creates a New PSSession via the New-PSSession
-        cmdlet named "Sudo<UserName>". You can then run elevated commands in the Elevated PSSession by
-        either entering the Elevated PSSession via the Enter-PSSession cmdlet or by using the Invoke-Command cmdlet with
-        its -Session and -ScriptBlock parameters.
+}
 
-        This function will NOT run in a PowerShell Session that is already elevated (i.e. launched using "Run As Administrator").
-
-        When used in a Non-Elevated PowerShell session, this function:
-
-        1) Checks to make sure WinRM/WSMan is enabled and configured to allow CredSSP Authentication (if not then
-        configuration changes are made)
-
-        2) Checks the Local Group Policy Object...
-            Computer Configuration -> Administrative Templates -> System -> Credentials Delegation -> Allow Delegating Fresh Credentials
-        ...to make sure it is enabled and configured to allow connections via WSMAN/<LocalHostFQDN>
-
-        3) Creates an Elevated PSSession using the New-PSSession cmdlet
-
-        4) Outputs a PSCustomObject that contains four Properties:
-        - ElevatedPSSession - Contains the object [PSSession]ElevatedPSSessionFor<UserName>
-        - WSManAndRegistryChanges - Contains another PSCustomObject with the following Properties -
-            [bool]WinRMStateChange
-            [bool]WSMANServerCredSSPStateChange
-            [bool]WSMANClientCredSSPStateChange
-            [System.Collections.ArrayList]RegistryKeyCreated
-            [System.Collections.ArrayList]RegistryKeyPropertiesCreated
-        - ConfigChangesFilePath - Path to the .xml file that logs exactly what changes (if any) were made to WSMAN/CredSSP
-        - RevertedChangesFilePath - Path to the .xml file that logs exactly what changes (if any) were made to WSMAN/CredSSP when
-        reverting configuration back to what it was prior to using the New-SudoSession function
-
-        IMPORTANT NOTE: By default, all changes made to WSMAN/CredSSP are immediately reverted after the Sudo PSSession has
-        been Opened. The Sudo Session will stay open for approximately 3 minutes in this state. If you would like to keep
-        the Sudo Session open indefinitely and delay reverting WSMAN/CredSSP configuration changes, use the -KeepOpen
-        switch. If the -KeepOpen switch is used the aforementioned 'RevertedChangesFilePath' will be $null (because nothing
-        gets reverted until you use the Remove-SudoSession function).
-
-    .NOTES
-        Recommend assigning this function to a variable when it is used so that it can be referenced in the companion
-        function Remove-SudoSession. If you do NOT assign a variable to this function when it is used, you can always
-        reference this function's PSCustomObject output by calling $global:NewSessionAndOriginalStatus, which is a
-        Global Scope variable created when this function is run. $global:NewSessionAndOriginalStatus.WSManAndRegistryChanges
-        can be used for Remove-SudoSession's -OriginalConfigInfo parameter, and $global:NewSessionAndOriginalStatus.ElevatedPSSesion
-        can be used for Remove-SudoSession's -SessionToRemove parameter.
-
-    .PARAMETER UserName
-        This parameter takes a string that represents a UserName with Administrator privileges. Defaults to current user.
-
-        This parameter is mandatory if you do NOT use the -Credentials parameter.
-
-    .PARAMETER Password
-        This parameter takes a SecureString that represents the Password for the user specified by -UserName.
-
-        This parameter is mandatory if you do NOT use the -Credentials parameter.
-
-    .PARAMETER Credentials
-        This parameter takes a System.Management.Automation.PSCredential object with Administrator privileges.
-
-        This parameter is mandatory if you do NOT use the -Password parameter.
-
-    .PARAMETER KeepOpen
-        This parameter is a switch.
-
-        If used, the configuration changes made to WSMan/CredSSP will remain until you specifically use the Remove-SudoSession
-        function. This allows the Sudo Session to stay open for longer than 3 minutes.
-
-    .PARAMETER SuppressTimeWarning
-        This parameter is a switch.
-
-        If used, it will suppress the warning regarding the new Sudo Session only staying open for approximately 3 minutes.
-
-    .EXAMPLE
-        PS C:\Users\zeroadmin> New-SudoSession
-        Please enter the password for zero\zeroadmin: ************
-
-        ElevatedPSSession                      WSManAndRegistryChanges
-        -----------------                      ------------------------------
-        [PSSession]Sudozeroadmin 
-
-        PS C:\Users\zeroadmin> Get-PSSession
-
-        Id Name            ComputerName    ComputerType    State         ConfigurationName     Availability
-        -- ----            ------------    ------------    -----         -----------------     ------------
-        1 Sudozeroadmin    localhost       RemoteMachine   Opened        Microsoft.PowerShell     Available
-
-        PS C:\Users\zeroadmin> Enter-PSSession -Name Sudozeroadmin
-        [localhost]: PS C:\Users\zeroadmin\Documents> 
-
-    .EXAMPLE
-        PS C:\Users\zeroadmin> $SudoSessionInfo = New-SudoSession -Credentials $TestAdminCreds
-        PS C:\Users\zeroadmin> Get-PSSession
-
-        Id Name            ComputerName    ComputerType    State         ConfigurationName     Availability
-        -- ----            ------------    ------------    -----         -----------------     ------------
-        1 Sudotestadmin    localhost       RemoteMachine   Opened        Microsoft.PowerShell     Available
-
-        PS C:\Users\zeroadmin> Invoke-Command -Session $SudoSessionInfo.ElevatedPSSession -Scriptblock {Install-Package Nuget.CommandLine -Source chocolatey}
-
-    .OUTPUTS
-        See DESCRIPTION and NOTES sections
-
-#>
-function New-SudoSession {
-    [CmdletBinding(DefaultParameterSetName='Supply UserName and Password')]
+function Pause-ForWarning {
+    [CmdletBinding()]
     Param(
-        [Parameter(
-            Mandatory=$False,
-            ParameterSetName='Supply UserName and Password'
-        )]
-        [ValidatePattern("[\w]+\\[\w]+")]
-        [string]$UserName,
+        [Parameter(Mandatory=$True)]
+        [int]$PauseTimeInSeconds,
 
-        [Parameter(
-            Mandatory=$False,
-            ParameterSetName='Supply UserName and Password'
-        )]
-        [securestring]$Password,
+        [Parameter(Mandatory=$True)]
+        $Message
+    )
 
-        [Parameter(
-            Mandatory=$False,
-            ParameterSetName='Supply Credentials'
-        )]
-        [System.Management.Automation.PSCredential]$Credentials,
+    Write-Warning $Message
+    Write-Host "To answer in the affirmative, press 'y' on your keyboard."
+    Write-Host "To answer in the negative, press any other key on your keyboard, OR wait $PauseTimeInSeconds seconds"
 
-        # If this switch is not used, then the New SudoSession will only stay open for ~3 minutes.
-        # IMPORTANT NOTE: If it IS used, then either the 'Remove-SudoSession' or 'Restore-OriginalSystemConfig' functions
-        # MUST be used to revert WSMAN and/or CredSSP configurations to what ther were prior to using the 'New-SudoSession' function 
+    $timeout = New-Timespan -Seconds ($PauseTimeInSeconds - 1)
+    $stopwatch = [diagnostics.stopwatch]::StartNew()
+    while ($stopwatch.elapsed -lt $timeout){
+        if ([Console]::KeyAvailable) {
+            $keypressed = [Console]::ReadKey("NoEcho").Key
+            Write-Host "You pressed the `"$keypressed`" key"
+            if ($keypressed -eq "y") {
+                $Result = $true
+                break
+            }
+            if ($keypressed -ne "y") {
+                $Result = $false
+                break
+            }
+        }
+
+        # Check once every 1 second to see if the above "if" condition is satisfied
+        Start-Sleep 1
+    }
+
+    if (!$Result) {
+        $Result = $false
+    }
+    
+    $Result
+}
+
+function Refresh-ChocolateyEnv {
+    [CmdletBinding()]
+    Param(
         [Parameter(Mandatory=$False)]
-        [switch]$KeepOpen,
-
-        # Meant for use within Start-SudoSession code. Suppresses warning message about the Elevated PSSession only
-        # being open for 3 minutes since that doesn't apply to the Start-SudoSession function (where it's only open
-        # for the duration of the scriptblock you run)
-        [Parameter(Mandatory=$False)]
-        [switch]$SuppressTimeWarning
+        [string]$ChocolateyDirectory
     )
 
     ##### BEGIN Variable/Parameter Transforms and PreRun Prep #####
 
-    if (GetElevation) {
-        Write-Error "The current PowerShell Session is already being run with elevated permissions. There is no reason to use the Start-SudoSession function. Halting!"
-        $global:FunctionResult = "1"
-        return
+    # Fix any potential $env:Path mistakes...
+    <#
+    if ($env:Path -match ";;") {
+        $env:Path = $env:Path -replace ";;",";"
     }
+    #>
 
-    if (!$UserName) {
-        $UserName = GetCurrentUser
-    }
-    $SimpleUserName = $($UserName -split "\\")[-1]
-
-    if ($global:SudoCredentials) {
-        if (!$Credentials) {
-            if ($global:SudoCredentials.UserName -match "\\") {
-                $SudoUserName = $($global:SudoCredentials.UserName -split "\\")[-1]
-            }
-            else {
-                $SudoUserName = $global:SudoCredentials.UserName
-            }
-
-            if ($SudoUserName -eq $SimpleUserName) {
-                $Credentials = $global:SudoCredentials
-            }
-            elseif ($PSBoundParameters['UserName']) {
-                Remove-Variable -Name SudoCredentials -Force -ErrorAction SilentlyContinue
-            }
-            elseif (!$PSBoundParameters['UserName']) {
-                $ErrMsg = "The -UserName parameter was not used, so default current user (i.e. $(whoami)) " +
-                "was used. The Sudo Credentials available in the `$global:SudoCredentials object reference UserName " +
-                "$($global:SudoCredentials.UserName), which does not match $(whoami)! Halting!"
-                Write-Error $ErrMsg
-                $global:FunctionResult = "1"
-                return
-            }
-        }
-        else {
-            if ($global:SudoCredentials.UserName -ne $Credentials.UserName) {
-                $global:SudoCredentials = $Credentials
-            }
-        }
-    }
-
-    if (!$Credentials) {
-        if (!$Password) {
-            $Password = Read-Host -Prompt "Please enter the password for $UserName" -AsSecureString
-        }
-        $Credentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $UserName, $Password
-    }
-
-    if ($Credentials.UserName -notmatch "\\") {
-        Write-Error "The UserName provided to the `$Credentials object is not in the correct format! Please use a UserName with format <Domain>\<User> or <HostName>\<User>! Halting!"
-        $global:FunctionResult = "1"
-        return
-    }
-
-    $global:SudoCredentials = $Credentials
-
-    $Domain = $(Get-CimInstance -ClassName Win32_ComputerSystem).Domain
-    $LocalHostFQDN = "$env:ComputerName.$Domain"
-
-    ##### END Variable/Parameter Transforms and PreRunPrep #####
-
-    ##### BEGIN Main Body #####
-
-    $CurrentUser = $($(whoami) -split "\\")[-1]
-    $SudoSessionFolder = "$HOME\SudoSession_$CurrentUser`_$(Get-Date -Format MMddyyy)"
-    if (!$(Test-Path $SudoSessionFolder)) {
-        $SudoSessionFolder = $(New-Item -ItemType Directory -Path $SudoSessionFolder).FullName
-    }
-    $SudoSessionChangesPSObject = "$SudoSessionFolder\SudoSession_Config_Changes_$CurrentUser`_$(Get-Date -Format MMddyyy_hhmmss).xml"
-    $TranscriptPath = "$SudoSessionFolder\SudoSession_Transcript_$CurrentUser`_$(Get-Date -Format MMddyyy_hhmmss).txt"
-    $SystemConfigScriptFilePath = "$SudoSessionFolder\SystemConfigScript.ps1"
-    $CredDelRegLocation = "HKLM:\Software\Policies\Microsoft\Windows\CredentialsDelegation"
-    $CredSSPServicePath = "WSMan:\localhost\Service\Auth\CredSSP"
-    $CredSSPClientPath = "WSMan:\localhost\Client\Auth\CredSSP"
-    $AllowFreshValue = "WSMAN/$LocalHostFQDN"
-
-    $SystemConfigScript = @"
-    `$CredDelRegLocation = '$CredDelRegLocation'
-    `$CredSSPServicePath = '$CredSSPServicePath'
-    `$CredSSPClientPath = '$CredSSPClientPath'
-    `$AllowFreshValue = '$AllowFreshValue'
-    `$SudoSessionChangesPSObject = '$SudoSessionChangesPSObject'
-    `$CurrentUser = '$CurrentUser'
-    `$TranscriptPath = '$TranscriptPath'
-
-"@ + @'
-    Start-Transcript -Path $TranscriptPath -Append
-
-    # Gather output as we go...
-    $Output = [ordered]@{}
-    [System.Collections.ArrayList]$RegistryKeysCreated = @()
-    [System.Collections.ArrayList]$RegistryKeyPropertiesCreated = @()
-    $WinRMStateChange = $False
-
-
-    if (!$(Test-WSMan)) {
-        try {
-            Enable-PSRemoting -Force -SkipNetworkProfileCheck -ErrorAction Stop
-        }
-        catch {
-            Write-Error $_
-            $global:FunctionResult = "1"
-            return
-        }
-
-        $Output.Add("WinRMStateChange",$True)
-    }
-
-    ##### BEGIN Registry Tweaks under HKLM:\ #####
-
-    # Create the $CredDelRegLocation Key if it doesn't already exist
-    if (!$(Test-Path $CredDelRegLocation)) {
-        $CredentialsDelegationKey = New-Item -Path $CredDelRegLocation
-        $null = $RegistryKeysCreated.Add($CredentialsDelegationKey)
-    }
-
-    # Determine if the $CredDelRegLocation Key itself has a property (DWORD) called 'AllowFreshCredentials'
-    # and also if it has a SubKey of the same name (i.e.'AllowFreshCredentials'). Also check if it has a property
-    # (DWORD) called 'ConcatenateDefaults_AllowFresh'
-    $CredDelRegLocationProperties = Get-ItemProperty -Path $CredDelRegLocation
-    $AllowFreshCredsDWORDExists = $($CredDelRegLocationProperties | Get-Member -Type NoteProperty).Name -contains "AllowFreshCredentials"
-    $ConcatDefAllowFreshDWORDExists = $($CredDelRegLocationProperties | Get-Member -Type NoteProperty).Name -contains "ConcatenateDefaults_AllowFresh"
-    $AllowFreshCredentialsWhenNTLMOnlyDWORDExists = $($CredDelRegLocationProperties | Get-Member -Type NoteProperty).Name -contains "AllowFreshCredentialsWhenNTLMOnly"
-    $ConcatenateDefaults_AllowFreshNTLMOnlyDWORDExists = $($CredDelRegLocationProperties | Get-Member -Type NoteProperty).Name -contains "ConcatenateDefaults_AllowFreshNTLMOnly"
-    
-    # The below should be an array of integers
-    [array]$AllowFreshCredsSubKeyCheck = Get-ChildItem -Path $CredDelRegLocation | Where-Object {$_.PSChildName -match "AllowFreshCredentials"}
-
-    # If the two $CredDelRegLocation DWORDs don't exist, create them
-    if (!$AllowFreshCredsDWORDExists) {
-        $NewAllowFreshCredsProperty = Set-ItemProperty -Path $CredDelRegLocation -Name AllowFreshCredentials -Value 1 -Type DWord -Passthru
-        $null = $RegistryKeyPropertiesCreated.Add($NewAllowFreshCredsProperty)
-    }
-    if (!$ConcatDefAllowFreshDWORDExists) {
-        $NewConcatenateDefaultsProperty = Set-ItemProperty -Path $CredDelRegLocation -Name ConcatenateDefaults_AllowFresh -Value 1 -Type DWord -Passthru
-        $null = $RegistryKeyPropertiesCreated.Add($NewConcatenateDefaultsProperty)
-    }
-    if (!$AllowFreshCredentialsWhenNTLMOnlyDWORDExists) {
-        $NewAllowFreshCredsWhenNTLMProperty = Set-ItemProperty -Path $CredDelRegLocation -Name AllowFreshCredentialsWhenNTLMOnly -Value 1 -Type DWord -Passthru
-        $null = $RegistryKeyPropertiesCreated.Add($NewAllowFreshCredsWhenNTLMProperty)
-    }
-    if (!$ConcatenateDefaults_AllowFreshNTLMOnlyDWORDExists) {
-        $NewConcatenateDefaults_AllowFreshNTLMProperty = Set-ItemProperty -Path $CredDelRegLocation -Name ConcatenateDefaults_AllowFreshNTLMOnly -Value 1 -Type DWord -Passthru
-        $null = $RegistryKeyPropertiesCreated.Add($NewConcatenateDefaults_AllowFreshNTLMProperty)
-    }
-
-    if (!$(Test-Path $CredDelRegLocation\AllowFreshCredentials)) {
-        $AllowCredentialsKey = New-Item -Path $CredDelRegLocation\AllowFreshCredentials
-        $null = $RegistryKeysCreated.Add($AllowCredentialsKey)
-    }
-    if (!$(Test-Path $CredDelRegLocation\AllowFreshCredentialsWhenNTLMOnly)) {
-        $AllowCredentialsWhenNTLMKey = New-Item -Path $CredDelRegLocation\AllowFreshCredentialsWhenNTLMOnly
-        $null = $RegistryKeysCreated.Add($AllowCredentialsWhenNTLMKey)
-    }
-
-    # Should be an array of integers
-    [array]$AllowFreshCredsSubKeyPropertyKeys = $(Get-Item $CredDelRegLocation\AllowFreshCredentials).Property
-    [array]$AllowFreshCredsWhenNTLMSubKeyPropertyKeys = $(Get-Item $CredDelRegLocation\AllowFreshCredentialsWhenNTLMOnly).Property
-
-    if ($AllowFreshCredsSubKeyPropertyKeys.Count -eq 0) {
-        $AllowFreshCredsSubKeyNewProperty = Set-ItemProperty -Path $CredDelRegLocation\AllowFreshCredentials -Name 1 -Value $AllowFreshValue -Type String -Passthru
-        $null = $RegistryKeyPropertiesCreated.Add($AllowFreshCredsSubKeyNewProperty)
-    }
-    else {
-        [array]$AllowFreshCredsSubKeyPropertyValues = foreach ($key in $AllowFreshCredsSubKeyPropertyKeys) {
-            $(Get-ItemProperty $CredDelRegLocation\AllowFreshCredentials).$key
-        }
-
-        if ($AllowFreshCredsSubKeyPropertyValues -notmatch [regex]::Escape($AllowFreshValue)) {
-            $AllowFreshCredsSubKeyNewProperty = Set-ItemProperty -Path $CredDelRegLocation\AllowFreshCredentials -Name $($AllowFreshCredsSubKeyPropertyKeys.Count+1) -Value $AllowFreshValue -Type String -Passthru
-            $null = $RegistryKeyPropertiesCreated.Add($AllowFreshCredsSubKeyNewProperty)
-        }
-    }
-
-    if ($AllowFreshCredsWhenNTLMSubKeyPropertyKeys.Count -eq 0) {
-        $AllowFreshCredsWhenNTLMSubKeyNewProperty = Set-ItemProperty -Path $CredDelRegLocation\AllowFreshCredentialsWhenNTLMOnly -Name 1 -Value $AllowFreshValue -Type String -Passthru
-        $null = $RegistryKeyPropertiesCreated.Add($AllowFreshCredsWhenNTLMSubKeyNewProperty)
-    }
-    else {
-        [array]$AllowFreshCredsWhenNTLMSubKeyPropertyValues = foreach ($key in $AllowFreshCredsWhenNTLMSubKeyPropertyKeys) {
-            $(Get-ItemProperty $CredDelRegLocation\AllowFreshCredentialsWhenNTLMOnly).$key
-        }
-
-        if ($AllowFreshCredsWhenNTLMSubKeyPropertyValues -notmatch [regex]::Escape($AllowFreshValue)) {
-            $AllowFreshCredsWhenNTLMSubKeyNewProperty = Set-ItemProperty -Path $CredDelRegLocation\AllowFreshCredentialsWhenNTLMOnly -Name $($AllowFreshCredsWhenNTLMSubKeyPropertyKeys.Count+1) -Value $AllowFreshValue -Type String -Passthru
-            $null = $RegistryKeyPropertiesCreated.Add($AllowFreshCredsWhenNTLMSubKeyNewProperty)
-        }
-    }
-
-
-    $Output.Add("RegistryKeysCreated",$RegistryKeysCreated)
-    $Output.Add("RegistryKeyPropertiesCreated",$RegistryKeyPropertiesCreated)
-
-    ##### END Registry Tweaks under HKLM:\ #####
-
-    ##### BEGIN WSMAN Tweaks under WSMAN:\ #####
-
-    try {
-        $CredSSPServiceSetting = $(Get-Item $CredSSPServicePath).Value
-        if (!$CredSSPServiceSetting) {throw "Unable to get the value of WSMAN:\ path '$CredSSPServicePath'! Halting!"}
-    }
-    catch {
-        Write-Error $_
-        $global:FunctionResult = "1"
-        return
-    }
-
-    try {
-        $CredSSPClientSetting = $(Get-Item $CredSSPClientPath).Value
-        if ($CredSSPServiceSetting.Count -eq 0) {throw "Unable to get the value of WSMAN:\ path '$CredSSPClientPath'! Halting!"}
-    }
-    catch {
-        Write-Error $_
-        $global:FunctionResult = "1"
-        return
-    }
-
-    if ($CredSSPServiceSetting -eq 'false') {
-        Enable-WSManCredSSP -Role Server -Force
-        $WSMANServerCredSSPStateChange = $True
-    }
-    $Ouput.Add("WSMANServerCredSSPStateChange",$WSMANServerCredSSPStateChange)
-    
-    if ($CredSSPClientSetting -eq 'false') {
-        Enable-WSManCredSSP -DelegateComputer localhost -Role Client -Force
-        $WSMANClientCredSSPStateChange = $True
-    }
-    $Output.Add("WSMANClientCredSSPStateChange",$WSMANClientCredSSPStateChange)
-
-    ##### END WSMAN Tweaks under WSMAN:\ #####
-
-    [pscustomobject]$Output
-
-    # Create a backup of what we did to the system, just in case the current PowerShell Session is interrupted for some reason
-    [pscustomobject]$Output | Export-CliXml $SudoSessionChangesPSObject
-'@ | Set-Content $SystemConfigScriptFilePath
-    
-    # IMPORTANT NOTE: You CANNOT use the RunAs Verb if UseShellExecute is $false, and you CANNOT use
-    # RedirectStandardError or RedirectStandardOutput if UseShellExecute is $true, so we have to write
-    # output to a file temporarily
-    $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
-    $ProcessInfo.FileName = "powershell.exe"
-    $ProcessInfo.RedirectStandardError = $false
-    $ProcessInfo.RedirectStandardOutput = $false
-    $ProcessInfo.UseShellExecute = $true
-    $ProcessInfo.Arguments = "-NoProfile -NonInteractive -WindowStyle Hidden -Command `"& $SystemConfigScriptFilePath`""
-    $ProcessInfo.Verb = "RunAs"
-    $Process = New-Object System.Diagnostics.Process
-    $Process.StartInfo = $ProcessInfo
-    try {
-        $Process.Start() | Out-Null
-    }
-    catch {
-        Write-Error $_
-        Write-Error "User did not accept the UAC Prompt! Halting!"
-        $global:FunctionResult = "1"
-        return
-    }
-    $Process.WaitForExit()
-    $SystemConfigScriptResult = Import-CliXML $SudoSessionChangesPSObject
-
-    $ElevatedPSSession = New-PSSession -Name "Sudo$SimpleUserName" -Authentication CredSSP -Credential $Credentials
-
-    if (!$KeepOpen) {
-        try {
-            $RestoreOriginalSystemConfig = Restore-OriginalSystemConfig -OriginalConfigInfo $SystemConfigScriptResult -ExistingSudoSession $ElevatedPSSession -Credentials $Credentials
-            if (!$RestoreOriginalSystemConfig) {throw "Problem restoring original WSMAN and CredSSP system config! See '$SudoSessionChangesPSObject' for information about what was changed."}
-            
-            $SudoSessionRevertChangesPSObject = $($(Resolve-Path "$SudoSessionFolder\SudoSession_Config_Revert_Changes_*.xml").Path | foreach {
-                Get-Item $_
-            } | Sort-Object -Property CreationTime)[-1].FullName
-        }
-        catch {
-            Write-Warning $_.Exception.Message
-        }
-    }
-    else {
-        $WrnMsg = "Please be sure to run `Remove-SudoSession -SessionToRemove '`$(Get-PSSession -Id $($ElevatedPSSession.Id))' before you " +
-        "close PowerShell in order to remove the SudoSession and revert WSMAN and CredSSP configuration changes."
-
-        Write-Warning $WrnMsg
-    }
-
-    New-Variable -Name "NewSessionAndOriginalStatus" -Scope Global -Value $(
-        [pscustomobject][ordered]@{
-            ElevatedPSSession               = $ElevatedPSSession
-            WSManAndRegistryChanges         = $SystemConfigScriptResult
-            ConfigChangesFilePath           = $SudoSessionChangesPSObject
-            RevertedChangesFilePath         = $SudoSessionRevertChangesPSObject
-        }
-    ) -Force
-    
-    $(Get-Variable -Name "NewSessionAndOriginalStatus" -ValueOnly)
-
-    # Cleanup 
-    Remove-Item $SystemConfigScriptFilePath
-    
-    if (!$($SuppressTimeWarning -or $KeepOpen)) {
-        Write-Warning "The New SudoSession named '$($ElevatedPSSession.Name)' with Id '$($ElevatedPSSession.Id)' will stay open for approximately 3 minutes!"
-    }
-
-    ##### END Main Body #####
-
-}
-
-
-<#
-    .SYNOPSIS
-        Removes a Sudo Session (i.e. elevated PSSession) for the current user in the current PowerShell Session and
-        and reverts any changes to WSMAN/CredSSP made by the New-SudoSession function.
-
-        IMPORTANT NOTE: This function should only be necessary if the New-SudoSession function was used with the -KeepOpen switch!
-        It is meant to be used in the same PowerShell Session that the New-SudoSession function was used in.
-
-    .DESCRIPTION
-        See .SYNOPSIS
-
-    .PARAMETER SessionToRemove
-        This parameter is MANDATORY.
-        
-        This parameter takes a System.Management.Automation.Runspaces.PSSession object that you would like to remove.
-        
-        NOTE: The Name property of the PSSession object provided to this paramter should be "Sudo<UserName>". This
-        function is not meant to be used to close any other kind of PSSession.
-
-    .PARAMETER OriginalConfigInfo
-        This parameter is MANDATORY.
-
-        This parameter defaults to the 'WSManAndRegistryChanges' property of the global variable created via the New-SudoSession
-        function called $global:NewSessionAndOriginalStatus, which is a PSCustomObject with the following properties:
-            [bool]WinRMStateChange
-            [bool]WSMANServerCredSSPStateChange
-            [bool]WSMANClientCredSSPStateChange
-            [System.Collections.ArrayList]RegistryKeyCreated
-            [System.Collections.ArrayList]RegistryKeyPropertiesCreated
-
-    .PARAMETER UserName
-        This is a string that represents a UserName with Administrator privileges. Defaults to current user.
-
-        This parameter is mandatory if you do NOT use the -Credentials parameter.
-
-    .PARAMETER Password
-        This can be either a plaintext string or a secure string that represents the password for the -UserName.
-
-        This parameter is mandatory if you do NOT use the -Credentials parameter.
-
-    .PARAMETER Credentials
-        This is a System.Management.Automation.PSCredential object used to create an elevated PSSession.
-
-    .EXAMPLE
-        PS C:\Users\zeroadmin> $SudoSessionInfo = New-SudoSession -Credentials $MyCreds
-        PS C:\Users\zeroadmin> Remove-SudoSession -Credentials $MyCreds -OriginalConfigInfo $SudoSessionInfo.WSManAndRegistryChanges -SessionToRemove $SudoSessionInfo.ElevatedPSSession
-
-#>
-function Remove-SudoSession {
-    [CmdletBinding(DefaultParameterSetName='Supply UserName and Password')]
-    Param(
-        [Parameter(
-            Mandatory=$True,
-            ValueFromPipeline=$True,
-            Position=0
-        )]
-        [System.Management.Automation.Runspaces.PSSession]$SessionToRemove,
-
-        [Parameter(Mandatory=$False)]
-        $OriginalConfigInfo = $global:NewSessionAndOriginalStatus.WSManAndRegistryChanges,
-
-        [Parameter(
-            Mandatory=$False,
-            ParameterSetName='Supply UserName and Password'
-        )]
-        [string]$UserName = $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name -split "\\")[-1],
-
-        [Parameter(
-            Mandatory=$False,
-            ParameterSetName='Supply UserName and Password'
-        )]
-        [securestring]$Password,
-
-        [Parameter(
-            Mandatory=$False,
-            ParameterSetName='Supply Credentials'
-        )]
-        [System.Management.Automation.PSCredential]$Credentials
-    )
-
-    ##### BEGIN Variable/Parameter Transforms and PreRun Prep #####
-
-    if (GetElevation) {
-        Write-Error "The current PowerShell Session is already being run with elevated permissions. There is no reason to use the Start-SudoSession function. Halting!"
-        $global:FunctionResult = "1"
-        return
-    }
-
-    if ($OriginalConfigInfo -eq $null) {
-        Write-Warning "Unable to determine the original configuration of WinRM/WSMan and AllowFreshCredentials Registry prior to using New-SudoSession. No configuration changes will be made/reverted."
-        Write-Warning "The only action will be removing the Elevated PSSession specified by the -SessionToRemove parameter."
-    }
-
-    ##### END Variable/Parameter Transforms and PreRunPrep #####
-
-    ##### BEGIN Main Body #####
-
-    if ($OriginalConfigInfo -ne $null) {
-        $RestoreOriginalSystemConfigSplatParams = @{
-            ExistingSudoSession     = $SessionToRemove
-            OriginalConfigInfo      = $OriginalConfigInfo
-            ErrorAction             = "Stop"
-        }
-
-        if ($SessionToRemove.State -ne "Opened") {
-            if ($global:SudoCredentials) {
-                if (!$Credentials) {
-                    if ($Username -match "\\") {
-                        $UserName = $($UserName -split "\\")[-1]
-                    }
-                    if ($global:SudoCredentials.UserName -match "\\") {
-                        $SudoUserName = $($global:SudoCredentials.UserName -split "\\")[-1]
-                    }
-                    else {
-                        $SudoUserName = $global:SudoCredentials.UserName
-                    }
-                    if ($SudoUserName -match $UserName) {
-                        $Credentials = $global:SudoCredentials
-                    }
-                }
-                else {
-                    if ($global:SudoCredentials.UserName -ne $Credentials.UserName) {
-                        $global:SudoCredentials = $Credentials
-                    }
-                }
-            }
-        
-            if (!$Credentials) {
-                if (!$Password) {
-                    $Password = Read-Host -Prompt "Please enter the password for $UserName" -AsSecureString
-                }
-                $Credentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $UserName, $Password
-            }
-        
-            if ($Credentials.UserName -match "\\") {
-                $UserName = $($Credentials.UserName -split "\\")[-1]
-            }
-            if ($Username -match "\\") {
-                $UserName = $($UserName -split "\\")[-1]
-            }
-        
-            $global:SudoCredentials = $null
-        }
-
-        if ($Credentials) {
-            $RestoreOriginalSystemConfigSplatParams.Add("Credentials",$Credentials)
-        }
-
-        try {
-            Restore-OriginalSystemConfig @RestoreOriginalSystemConfigSplatParams
-        }
-        catch {
-            Write-Error $_
-            $global:FunctionResult = "1"
-            return
-        }
-    }
-
-    try {
-        Remove-PSSession $SessionToRemove -ErrorAction Stop
-    }
-    catch {
-        Write-Error $_
-        $global:FunctionResult = "1"
-        return
-    }
-
-    ##### END Main Body #####
-
-}
-
-
-<#
-    .SYNOPSIS
-        Restores WSMan and CredSSP settings to what they were prior to running the 'New-SudoSession' or 'Start-SudoSession'
-        functions.
-
-        IMPORTANT NOTE: You would use this function as opposed to the 'Remove-SudoSession' function under the following circumstance:
-            - You use the New-SudoSession with the -KeepOpen switch in a PowerShell Process we'll call 'A'
-            - PowerShell Process 'A' is killed/closed unexpectedly prior to the user running the Remove-SudoSession function
-            - PowerShell Process 'B' is started, the Sudo Module is imported, and this Restore-OriginalSystemConfig function
-            is used to revert WSMAN/CredSSP config changes made by the New-SudoSession function in PowerShell Process 'A'
-
-    .DESCRIPTION
-        See .SYNOPSIS
-
-    .PARAMETER ExistingSudoSession
-        Unless you are using the -ForceCredSSPReset switch, this parameter is MANDATORY.
-
-        This parameter takes a System.Management.Automation.Runspaces.PSSession object.
-
-    .PARAMETER SudoSessionChangesLogFilePath
-        Unless you are using the -ForceCredSSPReset switch, this parameter is MANDATORY.
-
-        This parameter taks a path to the .xml file generated by the New-SudoSession or Start-SudoSession functins
-        that logs exactly what changes to WSMan and CredSSP were made. The file name for this file defaults to the
-        format 'SudoSession_Config_Changes_<User>_<MMddyyyy>_<hhmmss>.xml'
-
-    .PARAMETER OriginalConfigInfo
-        This parameter is OPTIONAL.
-
-        This parameter takes a PSCustomObject that can be found in the "WSManAndRegistryChanges" property of the
-        PSCustomObject generated by the New-SudoSession function. The "WSManAndRegistryChanges" property is itself a
-        PSCustomObject with the following properties:
-            [bool]WinRMStateChange
-            [bool]WSMANServerCredSSPStateChange
-            [bool]WSMANClientCredSSPStateChange
-            [System.Collections.ArrayList]RegistryKeyCreated
-            [System.Collections.ArrayList]RegistryKeyPropertiesCreated
-
-    .PARAMETER UserName
-        This parameter is OPTIONAL.
-
-        This parameter takes a string and defaults to the Current User.
-
-        If you are running the Restore-OriginalSystemConfig function from a non-elevated PowerShell session, then credentials
-        with Adminstrator privileges must be provided in order to revert the WSMan and CredSSP changes that were made by the
-        New-SudoSession and/or the Start-SudoSession functions.
-
-    .PARAMETER Password
-        This parameter is OPTIONAL.
-
-        This parameter takes a SecureString. It should only be used if this function is being run from a non-elevated PowerShell
-        Session and if the -Credentials parameter is NOT used.
-
-        If you are running the Restore-OriginalSystemConfig function from a non-elevated PowerShell session, then credentials
-        with Adminstrator privileges must be provided in order to revert the WSMan and CredSSP changes that were made by the
-        New-SudoSession and/or the Start-SudoSession functions.
-
-    .PARAMETER Credentials
-        This parameter is OPTIONAL.
-
-        This parameter takes a System.Management.Automation.PSCredential. It should only be used if this function is being run from
-        a non-elevated PowerShell Session and if the -Password parameter is NOT used.
-
-        If you are running the Restore-OriginalSystemConfig function from a non-elevated PowerShell session, then credentials
-        with Adminstrator privileges must be provided in order to revert the WSMan and CredSSP changes that were made by the
-        New-SudoSession and/or the Start-SudoSession functions.
-
-    .PARAMETER ForceCredSSPReset
-        This parameter is OPTIONAL.
-
-        This parameter is a switch.
-
-        If used, all CredSSP settings will be set to disallow CredSSP authentication regardless of current system configuration state.
-
-    .EXAMPLE
-        PS C:\Users\zeroadmin> $SudoSessionInfo = New-SudoSession -Credentials $MyCreds
-        PS C:\Users\zeroadmin> Remove-SudoSession -Credentials $MyCreds -OriginalConfigInfo $SudoSessionInfo.WSManAndRegistryChanges -SessionToRemove $SudoSessionInfo.ElevatedPSSession
-
-#>
-# Just in case the PowerShell Session in which you originally created the SudoSession is killed/interrupted,
-# you can use this function to revert WSMAN/Registry changes that were made with the New-SudoSession function.
-# Example:
-#   Restore-OriginalSystemConfig -SudoSessionChangesLogFilePath "$HOME\SudoSession_04182018\SudoSession_Config_Changes_04182018_082747.xml"
-function Restore-OriginalSystemConfig {
-    [CmdletBinding(DefaultParameterSetName='Supply UserName and Password')]
-    Param(
-        [Parameter(Mandatory=$False)]
-        [System.Management.Automation.Runspaces.PSSession]$ExistingSudoSession,
-
-        [Parameter(Mandatory=$False)]
-        [string]$SudoSessionChangesLogFilePath,
-
-        [Parameter(Mandatory=$False)]
-        $OriginalConfigInfo,
-
-        [Parameter(
-            Mandatory=$False,
-            ParameterSetName='Supply UserName and Password'
-        )]
-        [string]$UserName,
-
-        [Parameter(
-            Mandatory=$False,
-            ParameterSetName='Supply UserName and Password'
-        )]
-        [securestring]$Password,
-
-        [Parameter(
-            Mandatory=$False,
-            ParameterSetName='Supply Credentials'
-        )]
-        [System.Management.Automation.PSCredential]$Credentials,
-
-        [Parameter(Mandatory=$False)]
-        [switch]$ForceCredSSPReset
-    )
-
-    # CredSSP Reset In Case of Emergency
-    if ($ForceCredSSPReset) {
-        $CredSSPRegistryKey = Get-Item -Path "HKLM:\Software\Policies\Microsoft\Windows\CredentialsDelegation" -ErrorAction SilentlyContinue
-
-        if ($CredSSPRegistryKey) {
-            Remove-Item -Path "HKLM:\Software\Policies\Microsoft\Windows\CredentialsDelegation" -Recurse -Force
-
-            [pscustomobject]@{
-                RegistryKeysRemoved = @($CredSSPRegistryKey)
-            }
-        }
-        else {
-            Write-Warning "CredSSP is not enabled. No action taken."
-        }
-        
-        return
-    }
-
-    ##### BEGIN Variable/Parameter Transforms and PreRun Prep #####
-
-    if ($(!$SudoSessionChangesLogFilePath -and !$OriginalConfigInfo) -or $($SudoSessionChangesLogFilePath -and $OriginalConfigInfo)) {
-        Write-Error "The $($MyInvocation.MyCommand.Name) function requires either the -SudoSessionChangesLogFilePath parameter or the -OriginalConfigInfoParameter! Halting!"
-        $global:FunctionResult = "1"
-        return
-    }
-
-    if ($SudoSessionChangesLogFilePath) {
-        # First, ingest SudoSessionChangesLogFilePath
-        if (!$(Test-Path $SudoSessionChangesLogFilePath)) {
-            Write-Error "The path $SudoSessionChangesLogFilePath was not found! Halting!"
-            $global:FunctionResult = "1"
-            return
-        }
-        else {
-            $OriginalConfigInfo = Import-CliXML $SudoSessionChangesLogFilePath
-        }
-    }
-
-    # Validate $OriginalConfigInfo
-    if ($OriginalConfigInfo) {
-        $ValidNoteProperties = @("RegistryKeyPropertiesCreated","RegistryKeysCreated","WinRMStateChange","WSMANServerCredSSPStateChange","WSMANClientCredSSPStateChange")
-        $ParamObjNoteProperties = $($OriginalConfigInfo | Get-Member -Type NoteProperty).Name
-        foreach ($Prop in $ParamObjNoteProperties) {
-            if ($ValidNoteProperties -notcontains $Prop) {
-                if ($PSBoundParameters['SudoSessionChangesLogFilePath']) {
-                    $ErrMsg = "The `$OriginalConfigInfo Object derived from the '$SudoSessionChangesLogFilePath' file is not valid! Halting!"
-                }
-                if ($PSBoundParameters['OriginalConfigInfo']) {
-                    $ErrMsg = "The `$OriginalConfigInfo Object passed to the -OriginalConfigInfo parameter is not valid! Halting!"
-                }
-                Write-Error $ErrMsg
-                $global:FunctionResult = "1"
-                return
-            }
-        }
-    }
-
-    $CurrentUser = $($(GetCurrentUser) -split "\\")[-1]
-    $SudoSessionFolder = "$HOME\SudoSession_$CurrentUser`_$(Get-Date -Format MMddyyy)"
-    if (!$(Test-Path $SudoSessionFolder)) {
-        $SudoSessionFolder = $(New-Item -ItemType Directory -Path $SudoSessionFolder).FullName
-    }
-    $SudoSessionRevertChangesPSObject = "$SudoSessionFolder\SudoSession_Config_Revert_Changes_$CurrentUser`_$(Get-Date -Format MMddyyy_hhmmss).xml"
-
-    if (!$UserName) {
-        $UserName = GetCurrentUser
-    }
-
-    if (!$(GetElevation)) {
-        if ($global:SudoCredentials) {
-            if (!$Credentials) {
-                if ($Username -match "\\") {
-                    $UserName = $($UserName -split "\\")[-1]
-                }
-                if ($global:SudoCredentials.UserName -match "\\") {
-                    $SudoUserName = $($global:SudoCredentials.UserName -split "\\")[-1]
-                }
-                else {
-                    $SudoUserName = $global:SudoCredentials.UserName
-                }
-                if ($SudoUserName -match $UserName) {
-                    $Credentials = $global:SudoCredentials
-                }
-            }
-            else {
-                if ($global:SudoCredentials.UserName -ne $Credentials.UserName) {
-                    $global:SudoCredentials = $Credentials
-                }
-            }
-        }
-    
-        if (!$Credentials) {
-            if (!$Password) {
-                $Password = Read-Host -Prompt "Please enter the password for $UserName" -AsSecureString
-            }
-            $Credentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $UserName, $Password
-        }
-    
-        if ($Credentials.UserName -match "\\") {
-            $UserName = $($Credentials.UserName -split "\\")[-1]
-        }
-        if ($Username -match "\\") {
-            $UserName = $($UserName -split "\\")[-1]
-        }
-    
-        $global:SudoCredentials = $Credentials
-    }
-    
     ##### END Variable/Parameter Transforms and PreRun Prep #####
 
     ##### BEGIN Main Body #####
 
-    if (GetElevation) {
-        # Collect $Output as we go...
-        $Output = [ordered]@{}
+    if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
+        if ($ChocolateyDirectory) {
+            $ChocolateyPath = $ChocolateyDirectory
+        }
+        else {
+            if (Test-Path "C:\Chocolatey") {
+                $ChocolateyPath = "C:\Chocolatey"
+            }
+            elseif (Test-Path "C:\ProgramData\chocolatey") {
+                $ChocolateyPath = "C:\ProgramData\chocolatey"
+            }
+            else {
+                Write-Error "Neither the Chocolatey PackageProvider nor the Chocolatey CmdLine appears to be installed! Halting!"
+                $global:FunctionResult = "1"
+                return
+            }
+        }
+    }
+    else {
+        $ChocolateyPath = "$($($(Get-Command choco).Source -split "chocolatey")[0])chocolatey"
+    }
+    [System.Collections.ArrayList]$ChocolateyPathsPrep = @()
+    [System.Collections.ArrayList]$ChocolateyPathsToAddToEnvPath = @()
+    if (Test-Path $ChocolateyPath) {
+        $($(Get-ChildItem $ChocolateyPath -Directory | foreach {
+            Get-ChildItem $_.FullName -Recurse -File
+        } | foreach {
+            if ($_.Extension -eq ".exe" -or $_.Extension -eq ".bat") {
+                $_.Directory.FullName
+            }
+        }) | Sort-Object | Get-Unique) | foreach {
+            $null = $ChocolateyPathsPrep.Add($_.Trim("\\"))
+        }
 
-        if ($OriginalConfigInfo.WSMANServerCredSSPStateChange) {
-            Set-Item -Path "WSMan:\localhost\Service\Auth\CredSSP" -Value false
-            $Output.Add("CredSSPServer","Off")
+        foreach ($ChocoPath in $ChocolateyPathsPrep) {
+            if ($(Test-Path $ChocoPath) -and $($env:Path -split ";") -notcontains $ChocoPath -and $ChocoPath -ne $null) {
+                $null = $ChocolateyPathsToAddToEnvPath.Add($ChocoPath)
+            }
         }
-        if ($OriginalConfigInfo.WSMANClientCredSSPStateChange) {
-            Set-Item -Path "WSMan:\localhost\Client\Auth\CredSSP" -Value false
-            $Output.Add("CredSSPClient","Off")
+
+        foreach ($ChocoPath in $ChocolateyPathsToAddToEnvPath) {
+            if ($env:Path[-1] -eq ";") {
+                $env:Path = "$env:Path" + $ChocoPath + ";"
+            }
+            else {
+                $env:Path = "$env:Path" + ";" + $ChocoPath
+            }
         }
-        if ($OriginalConfigInfo.WinRMStateChange) {
-            if ([bool]$(Test-WSMan -ErrorAction SilentlyContinue)) {
+    }
+    else {
+        Write-Verbose "Unable to find Chocolatey Path $ChocolateyPath."
+    }
+
+    # Remove any repeats in $env:Path
+    $UpdatedEnvPath = $($($($env:Path -split ";") | foreach {
+        if (-not [System.String]::IsNullOrWhiteSpace($_)) {
+            $_.Trim("\\")
+        }
+    }) | Select-Object -Unique) -join ";"
+
+    # Next, find chocolatey-core.psm1, chocolateysetup.psm1, chocolateyInstaller.psm1, and chocolateyProfile.psm1
+    # and import them
+    $ChocoCoreModule = $(Get-ChildItem -Path $ChocolateyPath -Recurse -File -Filter "*chocolatey-core.psm1").FullName
+    $ChocoSetupModule = $(Get-ChildItem -Path $ChocolateyPath -Recurse -File -Filter "*chocolateysetup.psm1").FullName
+    $ChocoInstallerModule = $(Get-ChildItem -Path $ChocolateyPath -Recurse -File -Filter "*chocolateyInstaller.psm1").FullName
+    $ChocoProfileModule = $(Get-ChildItem -Path $ChocolateyPath -Recurse -File -Filter "*chocolateyProfile.psm1").FullName
+
+    $ChocoModulesToImportPrep = @($ChocoCoreModule, $ChocoSetupModule, $ChocoInstallerModule, $ChocoProfileModule)
+    [System.Collections.ArrayList]$ChocoModulesToImport = @()
+    foreach ($ModulePath in $ChocoModulesToImportPrep) {
+        if ($ModulePath -ne $null) {
+            $null = $ChocoModulesToImport.Add($ModulePath)
+        }
+    }
+
+    foreach ($ModulePath in $ChocoModulesToImport) {
+        Remove-Module -Name $([System.IO.Path]::GetFileNameWithoutExtension($ModulePath)) -ErrorAction SilentlyContinue
+        Import-Module -Name $ModulePath
+    }
+
+    $UpdatedEnvPath
+
+    ##### END Main Body #####
+
+}
+
+<#
+    .SYNOPSIS
+        Install a Program using PackageManagement/PowerShellGet OR the Chocolatey Cmdline.
+
+    .DESCRIPTION
+        This function was written to make program installation on Windows as easy and generic
+        as possible by leveraging existing solutions such as PackageManagement/PowerShellGet
+        and the Chocolatey CmdLine.
+
+        The function defaults to using PackageManagement/PowerShellGet. If that fails for
+        whatever reason, then the Chocolatey CmdLine is used. You can also use appropriate
+        parameters to specifically use EITHER PackageManagement/PowerShellGet OR the
+        Chocolatey CmdLine
+
+    .PARAMETER ProgramName
+        This parameter is MANDATORY.
+
+        This paramter takes a string that represents the name of the program that you'd like to install.
+
+    .PARAMETER UsePowerShellGet
+        This parameter is OPTIONAL.
+
+        This parameter is a switch that makes the function attempt program installation using ONLY
+        PackageManagement/PowerShellGet Modules. Install using those modules fails for whatever
+        reason, the function halts and returns the relevant error message(s).
+
+        Installation via the Chocolatey CmdLine will NOT be attempted.
+
+    .PARAMETER UseChocolateyCmdLine
+        This parameter is OPTIONAL.
+
+        This parameter is a switch that makes the function attemt program installation using ONLY
+        the Chocolatey CmdLine. If installation via the Chocolatey CmdLine fails for whatever reason,
+        the function halts and returns the relevant error message(s)
+
+    .PARAMETER ExpectedInstallLocation
+        This parameter is OPTIONAL.
+
+        This parameter takes a string that represents the full path to a directory that contains the
+        main executable for the installed program. This directory does NOT have to be the immediate
+        parent directory of the .exe.
+
+        If you are absolutely certain you know where on the filesystem the program will be installed,
+        then use this parameter to speed things up.
+
+    .PARAMETER CommandName
+        This parameter is OPTIONAL.
+
+        This parameter takes a string that represents the name of the main executable for the installed
+        program. For example, if you are installing 7zip, the value of this parameter should be (under
+        most circumstances) '7z'.
+
+    .PARAMETER NoUpdatePackageManagement
+        This parameter is OPTIONAL.
+
+        This parameter is a switch that suppresses this function's default behavior, which is to try
+        and update PackageManagement/PowerShellGet Modules before attempting to use them to install
+        the desired program. Updating these modules can take up to a minute, so use this switch
+        if you want to skip the attempt to update.
+
+    .EXAMPLE
+        Install-Program -ProgramName kubernetes-cli -CommandName kubectl.exe
+
+    .EXAMPLE
+        Install-Program -ProgramName awscli -CommandName aws.exe -UsePowerShellGet
+
+    .EXAMPLE
+        Install-Program -ProgramName VisualStudioCode -CommandName Code.exe -UseChocolateyCmdLine
+
+    .EXAMPLE
+        # If the Program Name and Main Executable are the same, then this is all you need...
+        Install-Program -ProgramName vagrant
+
+#>
+function Install-Program {
+    [CmdletBinding(DefaultParameterSetName='ChocoCmdLine')]
+    Param (
+        [Parameter(Mandatory=$True)]
+        [string]$ProgramName,
+
+        [Parameter(Mandatory=$False)]
+        [string]$CommandName,
+
+        [Parameter(
+            Mandatory=$False,
+            ParameterSetName='PackageManagement'
+        )]
+        [switch]$UsePowerShellGet,
+
+        [Parameter(
+            Mandatory=$False,
+            ParameterSetName='PackageManagement'
+        )]
+        [switch]$ForceChocoInstallScript,
+
+        [Parameter(Mandatory=$False)]
+        [switch]$UseChocolateyCmdLine,
+
+        [Parameter(Mandatory=$False)]
+        [string]$ExpectedInstallLocation,
+
+        [Parameter(Mandatory=$False)]
+        [switch]$NoUpdatePackageManagement = $True,
+
+        [Parameter(Mandatory=$False)]
+        [switch]$ScanCDriveForMainExeIfNecessary,
+
+        [Parameter(Mandatory=$False)]
+        [switch]$ResolveCommandPath = $True,
+
+        [Parameter(Mandatory=$False)]
+        [switch]$PreRelease
+    )
+
+    ##### BEGIN Native Helper Functions #####
+
+    # The below function adds Paths from System PATH that aren't present in $env:Path (this probably shouldn't
+    # be an issue, because $env:Path pulls from System PATH...but sometimes profile.ps1 scripts do weird things
+    # and also $env:Path wouldn't necessarily be updated within the same PS session where a program is installed...)
+    function Synchronize-SystemPathEnvPath {
+        $SystemPath = $(Get-ItemProperty -Path 'Registry::HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Session Manager\Environment' -Name PATH).Path
+        
+        $SystemPathArray = $SystemPath -split ";" | foreach {if (-not [System.String]::IsNullOrWhiteSpace($_)) {$_}}
+        $EnvPathArray = $env:Path -split ";" | foreach {if (-not [System.String]::IsNullOrWhiteSpace($_)) {$_}}
+        
+        # => means that $EnvPathArray HAS the paths but $SystemPathArray DOES NOT
+        # <= means that $SystemPathArray HAS the paths but $EnvPathArray DOES NOT
+        $PathComparison = Compare-Object $SystemPathArray $EnvPathArray
+        [System.Collections.ArrayList][Array]$SystemPathsThatWeWantToAddToEnvPath = $($PathComparison | Where-Object {$_.SideIndicator -eq "<="}).InputObject
+
+        if ($SystemPathsThatWeWantToAddToEnvPath.Count -gt 0) {
+            foreach ($NewPath in $SystemPathsThatWeWantToAddToEnvPath) {
+                if ($env:Path[-1] -eq ";") {
+                    $env:Path = "$env:Path$NewPath"
+                }
+                else {
+                    $env:Path = "$env:Path;$NewPath"
+                }
+            }
+        }
+    }
+
+    # Outputs [System.Collections.ArrayList]$ExePath
+    function Adjudicate-ExePath {
+        [CmdletBinding()]
+        Param (
+            [Parameter(Mandatory=$True)]
+            [string]$ProgramName,
+
+            [Parameter(Mandatory=$True)]
+            [string]$OriginalSystemPath,
+
+            [Parameter(Mandatory=$True)]
+            [string]$OriginalEnvPath,
+
+            [Parameter(Mandatory=$True)]
+            [string]$FinalCommandName,
+
+            [Parameter(Mandatory=$False)]
+            [string]$ExpectedInstallLocation
+        )
+
+        # ...search for it in the $ExpectedInstallLocation if that parameter is provided by the user...
+        if ($ExpectedInstallLocation) {
+            [System.Collections.ArrayList][Array]$ExePath = $(Get-ChildItem -Path $ExpectedInstallLocation -File -Recurse -Filter "*$FinalCommandName.exe").FullName
+        }
+        # If we don't have $ExpectedInstallLocation provided...
+        if (!$ExpectedInstallLocation) {
+            # ...then we can compare $OriginalSystemPath to the current System PATH to potentially
+            # figure out which directories *might* contain the main executable.
+            $OriginalSystemPathArray = $OriginalSystemPath -split ";" | foreach {if (-not [System.String]::IsNullOrWhiteSpace($_)) {$_}}
+            $OriginalEnvPathArray = $OriginalEnvPath -split ";" | foreach {if (-not [System.String]::IsNullOrWhiteSpace($_)) {$_}}
+
+            $CurrentSystemPath = $(Get-ItemProperty -Path 'Registry::HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Session Manager\Environment' -Name PATH).Path
+            $CurrentSystemPathArray = $CurrentSystemPath -split ";" | foreach {if (-not [System.String]::IsNullOrWhiteSpace($_)) {$_}}
+            $CurrentEnvPath = $env:Path
+            $CurrentEnvPathArray = $CurrentEnvPath -split ";" | foreach {if (-not [System.String]::IsNullOrWhiteSpace($_)) {$_}}
+            
+
+            $OriginalVsCurrentSystemPathComparison = Compare-Object $OriginalSystemPathArray $CurrentSystemPathArray
+            $OriginalVsCurrentEnvPathComparison = Compare-Object $OriginalEnvPathArray $CurrentEnvPathArray
+
+            [System.Collections.ArrayList]$DirectoriesToSearch = @()
+            if ($OriginalVsCurrentSystemPathComparison -ne $null) {
+                # => means that $CurrentSystemPathArray has some new directories
+                [System.Collections.ArrayList][Array]$NewSystemPathDirs = $($OriginalVsCurrentSystemPathComparison | Where-Object {$_.SideIndicator -eq "=>"}).InputObject
+            
+                if ($NewSystemPathDirs.Count -gt 0) {
+                    foreach ($dir in $NewSystemPathDirs) {
+                        $null = $DirectoriesToSearch.Add($dir)
+                    }
+                }
+            }
+            if ($OriginalVsCurrentEnvPathComparison -ne $null) {
+                # => means that $CurrentEnvPathArray has some new directories
+                [System.Collections.ArrayList][Array]$NewEnvPathDirs = $($OriginalVsCurrentEnvPathComparison | Where-Object {$_.SideIndicator -eq "=>"}).InputObject
+            
+                if ($NewEnvPathDirs.Count -gt 0) {
+                    foreach ($dir in $NewEnvPathDirs) {
+                        $null = $DirectoriesToSearch.Add($dir)
+                    }
+                }
+            }
+
+            if ($DirectoriesToSearch.Count -gt 0) {
+                $DirectoriesToSearchFinal = $($DirectoriesToSearch | Sort-Object | Get-Unique) | foreach {if (Test-Path $_) {$_}}
+                $DirectoriesToSearchFinal = $DirectoriesToSearchFinal | Where-Object {$_ -match "$ProgramName"}
+
+                [System.Collections.ArrayList]$ExePath = @()
+                foreach ($dir in $DirectoriesToSearchFinal) {
+                    [Array]$ExeFiles = $(Get-ChildItem -Path $dir -File -Filter "*$FinalCommandName.exe").FullName
+                    if ($ExeFiles.Count -gt 0) {
+                        $null = $ExePath.Add($ExeFiles)
+                    }
+                }
+
+                # If there IS a difference in original vs current System PATH / $Env:Path, but we 
+                # still DO NOT find the main executable in those diff directories (i.e. $ExePath is still not set),
+                # it's possible that the name of the main executable that we're looking for is actually
+                # incorrect...in which case just tell the user that we can't find the expected main
+                # executable name and provide a list of other .exe files that we found in the diff dirs.
+                if (!$ExePath -or $ExePath.Count -eq 0) {
+                    [System.Collections.ArrayList]$ExePath = @()
+                    foreach ($dir in $DirectoriesToSearchFinal) {
+                        [Array]$ExeFiles = $(Get-ChildItem -Path $dir -File -Filter "*.exe").FullName
+                        foreach ($File in $ExeFiles) {
+                            $null = $ExePath.Add($File)
+                        }
+                    }
+                }
+            }
+        }
+
+        $ExePath | Sort-Object | Get-Unique
+    }
+
+    function GetElevation {
+        if ($PSVersionTable.PSEdition -eq "Desktop" -or $PSVersionTable.Platform -eq "Win32NT" -or $PSVersionTable.PSVersion.Major -le 5) {
+            [System.Security.Principal.WindowsPrincipal]$currentPrincipal = New-Object System.Security.Principal.WindowsPrincipal(
+                [System.Security.Principal.WindowsIdentity]::GetCurrent()
+            )
+    
+            [System.Security.Principal.WindowsBuiltInRole]$administratorsRole = [System.Security.Principal.WindowsBuiltInRole]::Administrator
+    
+            if($currentPrincipal.IsInRole($administratorsRole)) {
+                return $true
+            }
+            else {
+                return $false
+            }
+        }
+        
+        if ($PSVersionTable.Platform -eq "Unix") {
+            if ($(whoami) -eq "root") {
+                return $true
+            }
+            else {
+                return $false
+            }
+        }
+    }
+
+    ##### END Native Helper Functions #####
+
+    ##### BEGIN Variable/Parameter Transforms and PreRun Prep #####
+
+    # Invoke-WebRequest fix...
+    [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls"
+
+    if (!$(GetElevation)) {
+        Write-Error "The $($MyInvocation.MyCommand.Name) function must be ran from an elevated PowerShell Session (i.e. 'Run as Administrator')! Halting!"
+        $global:FunctionResult = "1"
+        return
+    }
+
+    if ($UseChocolateyCmdLine) {
+        $NoUpdatePackageManagement = $True
+    }
+
+    Write-Host "Please wait..."
+    $global:FunctionResult = "0"
+    $MyFunctionsUrl = "https://raw.githubusercontent.com/pldmgg/misc-powershell/master/MyFunctions"
+
+    $null = Install-PackageProvider -Name Nuget -Force -Confirm:$False
+    $null = Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+    $null = Install-PackageProvider -Name Chocolatey -Force -Confirm:$False
+    $null = Set-PackageSource -Name chocolatey -Trusted -Force
+
+    if (!$NoUpdatePackageManagement) {
+        if (![bool]$(Get-Command Update-PackageManagement -ErrorAction SilentlyContinue)) {
+            $UpdatePMFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Update-PackageManagement.ps1"
+            try {
+                Invoke-Expression $([System.Net.WebClient]::new().DownloadString($UpdatePMFunctionUrl))
+            }
+            catch {
+                Write-Error $_
+                Write-Error "Unable to load the Update-PackageManagement function! Halting!"
+                $global:FunctionResult = "1"
+                return
+            }
+        }
+
+        try {
+            $global:FunctionResult = "0"
+            $null = Update-PackageManagement -AddChocolateyPackageProvider -ErrorAction SilentlyContinue -ErrorVariable UPMErr
+            if ($UPMErr -and $global:FunctionResult -eq "1") {throw "The Update-PackageManagement function failed! Halting!"}
+        }
+        catch {
+            Write-Error $_
+            Write-Host "Errors from the Update-PackageManagement function are as follows:"
+            Write-Error $($UPMErr | Out-String)
+            $global:FunctionResult = "1"
+            return
+        }
+    }
+
+    if ($UseChocolateyCmdLine -or $(!$UsePowerShellGet -and !$UseChocolateyCmdLine)) {
+        if (![bool]$(Get-Command Install-ChocolateyCmdLine -ErrorAction SilentlyContinue)) {
+            $InstallCCFunctionUrl = "$MyFunctionsUrl/Install-ChocolateyCmdLine.ps1"
+            try {
+                Invoke-Expression $([System.Net.WebClient]::new().DownloadString($InstallCCFunctionUrl))
+            }
+            catch {
+                Write-Error $_
+                Write-Error "Unable to load the Install-ChocolateyCmdLine function! Halting!"
+                $global:FunctionResult = "1"
+                return
+            }
+        }
+    }
+
+    if (![bool]$(Get-Command Refresh-ChocolateyEnv -ErrorAction SilentlyContinue)) {
+        $RefreshCEFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Refresh-ChocolateyEnv.ps1"
+        try {
+            Invoke-Expression $([System.Net.WebClient]::new().DownloadString($RefreshCEFunctionUrl))
+        }
+        catch {
+            Write-Error $_
+            Write-Error "Unable to load the Refresh-ChocolateyEnv function! Halting!"
+            $global:FunctionResult = "1"
+            return
+        }
+    }
+
+    # If PackageManagement/PowerShellGet is installed, determine if $ProgramName is installed
+    if ([bool]$(Get-Command Get-Package -ErrorAction SilentlyContinue)) {
+        $PackageManagementInstalledPrograms = Get-Package
+
+        # If teh Current Installed Version is not equal to the Latest Version available, then it's outdated
+        if ($PackageManagementInstalledPrograms.Name -contains $ProgramName) {
+            $PackageManagementCurrentInstalledPackage = $PackageManagementInstalledPrograms | Where-Object {$_.Name -eq $ProgramName}
+            $PackageManagementLatestVersion = $(Find-Package -Name $ProgramName -Source chocolatey -AllVersions | Sort-Object -Property Version)[-1]
+        }
+    }
+
+    # If the Chocolatey CmdLine is installed, get a list of programs installed via Chocolatey
+    if ([bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
+        $ChocolateyInstalledProgramsPrep = clist --local-only
+        $ChocolateyInstalledProgramsPrep = $ChocolateyInstalledProgramsPrep[1..$($ChocolateyInstalledProgramsPrep.Count-2)]
+
+        [System.Collections.ArrayList]$ChocolateyInstalledProgramsPSObjects = @()
+
+        foreach ($program in $ChocolateyInstalledProgramsPrep) {
+            $programParsed = $program -split " "
+            $PSCustomObject = [pscustomobject]@{
+                ProgramName     = $programParsed[0]
+                Version         = $programParsed[1]
+            }
+
+            $null = $ChocolateyInstalledProgramsPSObjects.Add($PSCustomObject)
+        }
+
+        # Also get a list of outdated packages in case this Install-Program function is used to update a package
+        $ChocolateyOutdatedProgramsPrep = choco outdated
+        $UpperLineMatch = $ChocolateyOutdatedProgramsPrep -match "Output is package name"
+        $LowerLineMatch = $ChocolateyOutdatedProgramsPrep -match "Chocolatey has determined"
+        $UpperIndex = $ChocolateyOutdatedProgramsPrep.IndexOf($UpperLineMatch) + 2
+        $LowerIndex = $ChocolateyOutdatedProgramsPrep.IndexOf($LowerLineMatch) - 2
+        $ChocolateyOutdatedPrograms = $ChocolateyOutdatedProgramsPrep[$UpperIndex..$LowerIndex]
+
+        [System.Collections.ArrayList]$ChocolateyOutdatedProgramsPSObjects = @()
+        foreach ($line in $ChocolateyOutdatedPrograms) {
+            $ParsedLine = $line -split "\|"
+            $Program = $ParsedLine[0]
+            $CurrentInstalledVersion = $ParsedLine[1]
+            $LatestAvailableVersion = $ParsedLine[2]
+
+            $PSObject = [pscustomobject]@{
+                ProgramName                 = $Program
+                CurrentInstalledVersion     = $CurrentInstalledVersion
+                LatestAvailableVersion      = $LatestAvailableVersion
+            }
+
+            $null = $ChocolateyOutdatedProgramsPSObjects.Add($PSObject)
+        }
+    }
+
+    if ($CommandName -match "\.exe") {
+        $CommandName = $CommandName -replace "\.exe",""
+    }
+    $FinalCommandName = if ($CommandName) {$CommandName} else {$ProgramName}
+
+    # Save the original System PATH and $env:Path before we do anything, just in case
+    $OriginalSystemPath = $(Get-ItemProperty -Path 'Registry::HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Session Manager\Environment' -Name PATH).Path
+    $OriginalEnvPath = $env:Path
+    Synchronize-SystemPathEnvPath
+    $env:Path = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue
+
+    ##### END Variable/Parameter Transforms and PreRun Prep #####
+
+
+    ##### BEGIN Main Body #####
+
+    # Install $ProgramName if it's not already or if it's outdated...
+    if ($($PackageManagementInstalledPrograms.Name -notcontains $ProgramName  -and
+    $ChocolateyInstalledProgramsPSObjects.ProgramName -notcontains $ProgramName) -or
+    $PackageManagementCurrentInstalledPackage.Version -ne $PackageManagementLatestVersion.Version -or
+    $ChocolateyOutdatedProgramsPSObjects.ProgramName -contains $ProgramName
+    ) {
+        if ($UsePowerShellGet -or $(!$UsePowerShellGet -and !$UseChocolateyCmdLine) -or 
+        $PackageManagementInstalledPrograms.Name -contains $ProgramName -and $ChocolateyInstalledProgramsPSObjects.ProgramName -notcontains $ProgramName
+        ) {
+            $InstallPackageSplatParams = @{
+                Name            = $ProgramName
+                Force           = $True
+                ErrorAction     = "SilentlyContinue"
+                ErrorVariable   = "InstallError"
+                WarningAction   = "SilentlyContinue"
+            }
+            if ($PreRelease) {
+                $LatestVersion = $(Find-Package $ProgramName -AllVersions)[-1].Version
+                $InstallPackageSplatParams.Add("MinimumVersion",$LatestVersion)
+            }
+            # NOTE: The PackageManagement install of $ProgramName is unreliable, so just in case, fallback to the Chocolatey cmdline for install
+            $null = Install-Package @InstallPackageSplatParams
+            if ($InstallError.Count -gt 0) {
+                $null = Uninstall-Package $ProgramName -Force -ErrorAction SilentlyContinue
+                Write-Warning "There was a problem installing $ProgramName via PackageManagement/PowerShellGet!"
+                
+                if ($UsePowerShellGet) {
+                    Write-Error "One or more errors occurred during the installation of $ProgramName via the the PackageManagement/PowerShellGet Modules failed! Installation has been rolled back! Halting!"
+                    Write-Host "Errors for the Install-Package cmdlet are as follows:"
+                    Write-Error $($InstallError | Out-String)
+                    $global:FunctionResult = "1"
+                    return
+                }
+                else {
+                    Write-Host "Trying install via Chocolatey CmdLine..."
+                    $PMInstall = $False
+                }
+            }
+            else {
+                $PMInstall = $True
+
+                # Since Installation via PackageManagement/PowerShellGet was succesful, let's update $env:Path with the
+                # latest from System PATH before we go nuts trying to find the main executable manually
+                Synchronize-SystemPathEnvPath
+                $env:Path = $($(Refresh-ChocolateyEnv -ErrorAction SilentlyContinue) -split ";" | foreach {
+                    if (-not [System.String]::IsNullOrWhiteSpace($_) -and $(Test-Path $_)) {$_}
+                }) -join ";"
+            }
+        }
+
+        if (!$PMInstall -or $UseChocolateyCmdLine -or
+        $ChocolateyInstalledProgramsPSObjects.ProgramName -contains $ProgramName
+        ) {
+            try {
+                Write-Host "Refreshing `$env:Path..."
+                $global:FunctionResult = "0"
+                $env:Path = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
+
+                # The first time we attempt to Refresh-ChocolateyEnv, Chocolatey CmdLine and/or the
+                # Chocolatey Package Provider legitimately might not be installed,
+                # so if the Refresh-ChocolateyEnv function throws that error, we can ignore it
+                if ($RCEErr.Count -gt 0 -and
+                $global:FunctionResult -eq "1" -and
+                ![bool]$($RCEErr -match "Neither the Chocolatey PackageProvider nor the Chocolatey CmdLine appears to be installed!")) {
+                    throw "The Refresh-ChocolateyEnv function failed! Halting!"
+                }
+            }
+            catch {
+                Write-Error $_
+                Write-Host "Errors from the Refresh-ChocolateyEnv function are as follows:"
+                Write-Error $($RCEErr | Out-String)
+                $global:FunctionResult = "1"
+                return
+            }
+
+            # Make sure Chocolatey CmdLine is installed...if not, install it
+            if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
                 try {
-                    Disable-PSRemoting -Force -ErrorAction Stop -WarningAction SilentlyContinue
-                    $Output.Add("PSRemoting","Disabled")
-                    Stop-Service winrm -ErrorAction Stop
-                    $Output.Add("WinRMService","Stopped")
-                    Set-Item "WSMan:\localhost\Service\AllowRemoteAccess" -Value false -ErrorAction Stop
-                    $Output.Add("WSMANServerAllowRemoteAccess",$False)
+                    $global:FunctionResult = "0"
+                    $null = Install-ChocolateyCmdLine -NoUpdatePackageManagement -ErrorAction SilentlyContinue -ErrorVariable ICCErr
+                    if ($ICCErr -and $global:FunctionResult -eq "1") {throw "The Install-ChocolateyCmdLine function failed! Halting!"}
                 }
                 catch {
                     Write-Error $_
-                    if ($Output.Count -gt 0) {[pscustomobject]$Output}
+                    Write-Host "Errors from the Install-ChocolateyCmdline function are as follows:"
+                    Write-Error $($ICCErr | Out-String)
+                    $global:FunctionResult = "1"
+                    return
+                }
+            }
+
+            try {
+                # TODO: Figure out how to handle errors from choco.exe. Some we can ignore, others
+                # we shouldn't. But I'm not sure what all of the possibilities are so I can't
+                # control for them...
+                if ($PreRelease) {
+                    $null = cup $ProgramName --pre -y
+                }
+                else {
+                    $null = cup $ProgramName -y
+                }
+                $ChocoInstall = $true
+
+                # Since Installation via the Chocolatey CmdLine was succesful, let's update $env:Path with the
+                # latest from System PATH before we go nuts trying to find the main executable manually
+                Synchronize-SystemPathEnvPath
+                $env:Path = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue
+            }
+            catch {
+                Write-Error "There was a problem installing $ProgramName using the Chocolatey cmdline! Halting!"
+                $global:FunctionResult = "1"
+                return
+            }
+        }
+
+        if ($ResolveCommandPath -or $PSBoundParameters['CommandName']) {
+            ## BEGIN Try to Find Main Executable Post Install ##
+
+            # Now the parent directory of $ProgramName's main executable should be part of the SYSTEM Path
+            # (and therefore part of $env:Path). If not, try to find it in Chocolatey directories...
+            if ($(Get-Command $FinalCommandName -ErrorAction SilentlyContinue).CommandType -eq "Alias") {
+                while (Test-Path Alias:\$FinalCommandName) {
+                    Remove-Item Alias:\$FinalCommandName
+                }
+            }
+
+            if (![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue)) {
+                try {
+                    Write-Host "Refreshing `$env:Path..."
+                    $global:FunctionResult = "0"
+                    $env:Path = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
+                    if ($RCEErr.Count -gt 0 -and $global:FunctionResult -eq "1") {throw "The Refresh-ChocolateyEnv function failed! Halting!"}
+                }
+                catch {
+                    Write-Error $_
+                    Write-Host "Errors from the Refresh-ChocolateyEnv function are as follows:"
+                    Write-Error $($RCEErr | Out-String)
+                    $global:FunctionResult = "1"
+                    return
+                }
+            }
+            
+            # If we still can't find the main executable...
+            if (![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue) -and $(!$ExePath -or $ExePath.Count -eq 0)) {
+                $env:Path = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue
+                
+                if ($ExpectedInstallLocation) {
+                    [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName -ExpectedInstallLocation $ExpectedInstallLocation
+                }
+                else {
+                    [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName
+                }
+            }
+
+            # Determine if there's an exact match for the $FinalCommandName
+            if (![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue)) {
+                if ($ExePath.Count -ge 1) {
+                    if ([bool]$($ExePath -match "\\$FinalCommandName.exe$")) {
+                        $FoundExactCommandMatch = $True
+                    }
+                }
+            }
+
+            # If we STILL can't find the main executable...
+            if ($(![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue) -and $(!$ExePath -or $ExePath.Count -eq 0)) -or 
+            $(!$FoundExactCommandMatch -and $PSBoundParameters['CommandName']) -or 
+            $($ResolveCommandPath -and !$FoundExactCommandMatch) -or $ForceChocoInstallScript) {
+                # If, at this point we don't have $ExePath, if we did a $ChocoInstall, then we have to give up...
+                # ...but if we did a $PMInstall, then it's possible that PackageManagement/PowerShellGet just
+                # didn't run the chocolateyInstall.ps1 script that sometimes comes bundled with Packages from the
+                # Chocolatey Package Provider/Repo. So try running that...
+                if ($ChocoInstall) {
+                    if (![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue)) {
+                        Write-Warning "Unable to find main executable for $ProgramName!"
+                        $MainExeSearchFail = $True
+                    }
+                }
+                if ($PMInstall -or $ForceChocoInstallScript) {
+                    [System.Collections.ArrayList]$PossibleChocolateyInstallScripts = @()
+                    
+                    if (Test-Path "C:\Chocolatey") {
+                        $ChocoScriptsA = Get-ChildItem -Path "C:\Chocolatey" -Recurse -File -Filter "*chocolateyinstall.ps1" | Where-Object {$($(Get-Date) - $_.CreationTime).TotalMinutes -lt 5}
+                        foreach ($Script in $ChocoScriptsA) {
+                            $null = $PossibleChocolateyInstallScripts.Add($Script)
+                        }
+                    }
+                    if (Test-Path "C:\ProgramData\chocolatey") {
+                        $ChocoScriptsB = Get-ChildItem -Path "C:\ProgramData\chocolatey" -Recurse -File -Filter "*chocolateyinstall.ps1" | Where-Object {$($(Get-Date) - $_.CreationTime).TotalMinutes -lt 5}
+                        foreach ($Script in $ChocoScriptsB) {
+                            $null = $PossibleChocolateyInstallScripts.Add($Script)
+                        }
+                    }
+
+                    [System.Collections.ArrayList][Array]$ChocolateyInstallScriptSearch = $PossibleChocolateyInstallScripts.FullName | Where-Object {$_ -match ".*?$ProgramName.*?chocolateyinstall.ps1$"}
+                    if ($ChocolateyInstallScriptSearch.Count -eq 0) {
+                        Write-Warning "Unable to find main the Chocolatey Install Script for $ProgramName PowerShellGet install!"
+                        $MainExeSearchFail = $True
+                    }
+                    if ($ChocolateyInstallScriptSearch.Count -eq 1) {
+                        $ChocolateyInstallScript = $ChocolateyInstallScriptSearch[0]
+                    }
+                    if ($ChocolateyInstallScriptSearch.Count -gt 1) {
+                        $ChocolateyInstallScript = $($ChocolateyInstallScriptSearch | Sort-Object LastWriteTime)[-1]
+                    }
+                    
+                    if ($ChocolateyInstallScript) {
+                        try {
+                            Write-Host "Trying the Chocolatey Install script from $ChocolateyInstallScript..." -ForegroundColor Yellow
+                            & $ChocolateyInstallScript
+
+                            # Now that the $ChocolateyInstallScript ran, search for the main executable again
+                            Synchronize-SystemPathEnvPath
+                            $env:Path = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue
+
+                            if ($ExpectedInstallLocation) {
+                                [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName -ExpectedInstallLocation $ExpectedInstallLocation
+                            }
+                            else {
+                                [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName
+                            }
+
+                            # If we STILL don't have $ExePath, then we have to give up...
+                            if (!$ExePath -or $ExePath.Count -eq 0) {
+                                Write-Warning "Unable to find main executable for $ProgramName!"
+                                $MainExeSearchFail = $True
+                            }
+                        }
+                        catch {
+                            Write-Error $_
+                            Write-Error "The Chocolatey Install Script $ChocolateyInstallScript has failed!"
+
+                            # If PackageManagement/PowerShellGet is ERRONEOUSLY reporting that the program was installed
+                            # use the Uninstall-Package cmdlet to wipe it out. This scenario happens when PackageManagement/
+                            # PackageManagement/PowerShellGet gets a Package from the Chocolatey Package Provider/Repo but
+                            # fails to run the chocolateyInstall.ps1 script for some reason.
+                            if ([bool]$(Get-Package $ProgramName -ErrorAction SilentlyContinue)) {
+                                $null = Uninstall-Package $ProgramName -Force -ErrorAction SilentlyContinue
+                            }
+
+                            # Now we need to try the Chocolatey CmdLine. Easiest way to do this at this point is to just
+                            # invoke the function again with the same parameters, but specify -UseChocolateyCmdLine
+                            $BoundParametersDictionary = $PSCmdlet.MyInvocation.BoundParameters
+                            $InstallProgramSplatParams = @{}
+                            foreach ($kvpair in $BoundParametersDictionary.GetEnumerator()) {
+                                $key = $kvpair.Key
+                                $value = $BoundParametersDictionary[$key]
+                                if ($key -notmatch "UsePowerShellGet|ForceChocoInstallScript" -and $InstallProgramSplatParams.Keys -notcontains $key) {
+                                    $InstallProgramSplatParams.Add($key,$value)
+                                }
+                            }
+                            if ($InstallProgramSplatParams.Keys -notcontains "UseChocolateyCmdLine") {
+                                $InstallProgramSplatParams.Add("UseChocolateyCmdLine",$True)
+                            }
+                            if ($InstallProgramSplatParams.Keys -notcontains "NoUpdatePackageManagement") {
+                                $InstallProgramSplatParams.Add("NoUpdatePackageManagement",$True)
+                            }
+                            Install-Program @InstallProgramSplatParams
+
+                            return
+                        }
+                    }
+                }
+            }
+
+            ## END Try to Find Main Executable Post Install ##
+        }
+    }
+    else {
+        if ($ChocolateyInstalledProgramsPSObjects.ProgramName -contains $ProgramName) {
+            Write-Warning "$ProgramName is already installed via the Chocolatey CmdLine!"
+            $AlreadyInstalled = $True
+        }
+        elseif ([bool]$(Get-Package $ProgramName -ErrorAction SilentlyContinue)) {
+            Write-Warning "$ProgramName is already installed via PackageManagement/PowerShellGet!"
+            $AlreadyInstalled = $True
+        }
+    }
+
+    # If we weren't able to find the main executable (or any potential main executables) for
+    # $ProgramName, offer the option to scan the whole C:\ drive (with some obvious exceptions)
+    if ($MainExeSearchFail -and $($ResolveCommandPath -or $PSBoundParameters['CommandName']) -and
+    ![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue)) {
+        if (!$ScanCDriveForMainExeIfNecessary -and $ResolveCommandPath -and !$PSBoundParameters['CommandName']) {
+            $ScanCDriveChoice = Read-Host -Prompt "Would you like to scan C:\ for $FinalCommandName.exe? NOTE: This search excludes system directories but still could take some time. [Yes\No]"
+            while ($ScanCDriveChoice -notmatch "Yes|yes|Y|y|No|no|N|n") {
+                Write-Host "$ScanDriveChoice is not a valid input. Please enter 'Yes' or 'No'"
+                $ScanCDriveChoice = Read-Host -Prompt "Would you like to scan C:\ for $FinalCommandName.exe? NOTE: This search excludes system directories but still could take some time. [Yes\No]"
+            }
+        }
+
+        if ($ScanCDriveChoice -match "Yes|yes|Y|y" -or $ScanCDriveForMainExeIfNecessary) {
+            $DirectoriesToSearchRecursively = $(Get-ChildItem -Path "C:\" -Directory | Where-Object {$_.Name -notmatch "Windows|PerfLogs|Microsoft"}).FullName
+            [System.Collections.ArrayList]$ExePath = @()
+            foreach ($dir in $DirectoriesToSearchRecursively) {
+                $FoundFiles = $(Get-ChildItem -Path $dir -Recurse -File).FullName
+                foreach ($FilePath in $FoundFiles) {
+                    if ($FilePath -match "(.*?)$FinalCommandName([^\\]+)") {
+                        $null = $ExePath.Add($FilePath)
+                    }
+                }
+            }
+        }
+    }
+
+    if ($ResolveCommandPath -or $PSBoundParameters['CommandName']) {
+        # Finalize $env:Path
+        if ([bool]$($ExePath -match "\\$FinalCommandName.exe$")) {
+            $PathToAdd = $($ExePath -match "\\$FinalCommandName.exe$") | Split-Path -Parent
+            if ($($env:Path -split ";") -notcontains $PathToAdd) {
+                if ($env:Path[-1] -eq ";") {
+                    $env:Path = "$env:Path" + $PathToAdd + ";"
+                }
+                else {
+                    $env:Path = "$env:Path" + ";" + $PathToAdd
+                }
+            }
+        }
+        $FinalEnvPathArray = $env:Path -split ";" | foreach {if(-not [System.String]::IsNullOrWhiteSpace($_)) {$_}}
+        $FinalEnvPathString = $($FinalEnvPathArray | foreach {if (Test-Path $_) {$_}}) -join ";"
+        $env:Path = $FinalEnvPathString
+
+        if (![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue)) {
+            # Try to determine Main Executable
+            if (!$ExePath -or $ExePath.Count -eq 0) {
+                $FinalExeLocation = "NotFound"
+            }
+            elseif ($ExePath.Count -eq 1) {
+                $UpdatedFinalCommandName = $ExePath | Split-Path -Leaf
+
+                try {
+                    $FinalExeLocation = $(Get-Command $UpdatedFinalCommandName -ErrorAction SilentlyContinue).Source
+                }
+                catch {
+                    $FinalExeLocation = $ExePath
+                }
+            }
+            elseif ($ExePath.Count -gt 1) {
+                if (![bool]$($ExePath -match "\\$FinalCommandName.exe$")) {
+                    Write-Warning "No exact match for main executable $FinalCommandName.exe was found. However, other executables associated with $ProgramName were found."
+                }
+                $FinalExeLocation = $ExePath
+            }
+        }
+        else {
+            $FinalExeLocation = $(Get-Command $FinalCommandName).Source
+        }
+    }
+
+    if ($ChocoInstall) {
+        $InstallManager = "choco.exe"
+        $InstallCheck = $(clist --local-only $ProgramName)[1]
+    }
+    if ($PMInstall -or [bool]$(Get-Package $ProgramName -ProviderName Chocolatey -ErrorAction SilentlyContinue)) {
+        $InstallManager = "PowerShellGet"
+        $InstallCheck = Get-Package $ProgramName -ErrorAction SilentlyContinue
+    }
+
+    if ($AlreadyInstalled) {
+        $InstallAction = "AlreadyInstalled"
+    }
+    elseif ($PackageManagementCurrentInstalledPackage.Version -ne $PackageManagementLatestVersion.Version -or
+    $ChocolateyOutdatedProgramsPSObjects.ProgramName -contains $ProgramName
+    ) {
+        $InstallAction = "Updated"
+    }
+    else {
+        $InstallAction = "FreshInstall"
+    }
+
+    $env:Path = Refresh-ChocolateyEnv
+
+    [pscustomobject]@{
+        InstallManager      = $InstallManager
+        InstallAction       = $InstallAction
+        InstallCheck        = $InstallCheck
+        MainExecutable      = $FinalExeLocation
+        OriginalSystemPath  = $OriginalSystemPath
+        CurrentSystemPath   = $(Get-ItemProperty -Path 'Registry::HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Session Manager\Environment' -Name PATH).Path
+        OriginalEnvPath     = $OriginalEnvPath
+        CurrentEnvPath      = $env:Path
+    }
+
+    ##### END Main Body #####
+}
+
+function Uninstall-Program {
+    [CmdletBinding()]
+    Param (
+        [Parameter(Mandatory=$True)]
+        [string]$ProgramName,
+
+        [Parameter(Mandatory=$False)]
+        [switch]$UninstallAllSimilarlyNamedPackages
+    )
+
+    #region >> Variable/Parameter Transforms and PreRun Prep
+
+    if (!$(GetElevation)) {
+        Write-Error "The $($MyInvocation.MyCommand.Name) function must be ran from an elevated PowerShell Session (i.e. 'Run as Administrator')! Halting!"
+        $global:FunctionResult = "1"
+        return
+    }
+
+    try {
+        #$null = clist --local-only
+        $PackageManagerInstallObjects = Get-PackageManagerInstallObjects -ProgramName $ProgramName -ErrorAction SilentlyContinue
+        [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
+        [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
+        [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
+    }
+    catch {
+        Write-Error $_
+        $global:FunctionResult = "1"
+        return
+    }
+
+    #endregion >> Variable/Parameter Transforms and PreRun Prep
+    
+
+    #region >> Main Body
+    if ($ChocolateyInstalledProgramObjects.Count -eq 0 -and $PSGetInstalledPackageObjects.Count -eq 0) {
+        Write-Error "Unable to find an installed program matching the name $ProgramName! Halting!"
+        $global:FunctionResult = "1"
+        return
+    }
+
+    # We MIGHT be able to get the directory where the Program's binaries are by using Get-Command.
+    # This info is only useful if the uninstall isn't clean for some reason
+    $ProgramExePath = $(Get-Command $ProgramName -ErrorAction SilentlyContinue).Source
+    if ($ProgramExePath) {
+        $ProgramParentDirPath = $ProgramExePath | Split-Path -Parent
+    }
+
+    if ($PSGetInstalledPackageObjects.Count -gt 0) {
+        [System.Collections.ArrayList]$PSGetUninstallFailures = @()
+            
+        # Make sure that we uninstall Packages where 'ProviderName' is 'Programs' LAST
+        foreach ($Package in $PSGetInstalledPackageObjects) {
+            if ($Package.ProviderName -ne "Programs") {
+                Write-Host "Uninstalling $($Package.Name)..."
+                $UninstallResult = $Package | Uninstall-Package -Force -Confirm:$False -ErrorAction SilentlyContinue
+            }
+        }
+        foreach ($Package in $PSGetInstalledPackageObjects) {
+            if ($Package.ProviderName -eq "Programs") {
+                Write-Host "Uninstalling $($Package.Name)..."
+                $UninstallResult = $Package | Uninstall-Package -Force -Confirm:$False -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    try {
+        $PackageManagerInstallObjects = Get-PackageManagerInstallObjects -ProgramName $ProgramName -ErrorAction Stop
+        [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
+        [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
+        [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
+    }
+    catch {
+        Write-Error $_
+        $global:FunctionResult = "1"
+        return
+    }
+
+    # If we still have lingering packages, we need to try uninstall via what the Registry says the uninstall command is...
+    if ($PSGetInstalledPackageObjects.Count -gt 0) {
+        if ($RegistryProperties.Count -gt 0) {
+            foreach ($Program in $RegistryProperties) {
+                if ($Program.QuietUninstallString -ne $null) {
+                    Invoke-Expression "& $($Program.QuietUninstallString)"
+                }
+            }
+        }
+    }
+
+    try {
+        $PackageManagerInstallObjects = Get-PackageManagerInstallObjects -ProgramName $ProgramName -ErrorAction Stop
+        [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
+        [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
+        [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
+    }
+    catch {
+        Write-Error $_
+        $global:FunctionResult = "1"
+        return
+    }
+
+    # If we STILL have lingering packages, we'll just delete from the registry directly and clean up any binaries on the filesystem...
+    if ($PSGetInstalledPackageObjects.Count -gt 0) {
+        if ($RegistryProperties.Count -gt 0) {
+            foreach ($Program in $RegistryProperties) {
+                if (Test-Path $Program.PSPath) {
+                    Remove-Item -Path $Program.PSPath -Recurse -Force
+                }
+            }
+        }
+
+        if ($ProgramParentDirPath) {
+            if (Test-Path $ProgramParentDirPath) {
+                Remove-Item $ProgramParentDirPath -Recurse -Force
+            }
+        }
+    }
+
+    try {
+        $PackageManagerInstallObjects = Get-PackageManagerInstallObjects -ProgramName $ProgramName -ErrorAction Stop
+        [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
+        [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
+        [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
+    }
+    catch {
+        Write-Error $_
+        $global:FunctionResult = "1"
+        return
+    }
+
+    # Now take care of chocolatey if necessary...
+    if ($ChocolateyInstalledProgramObjects.Count -gt 0) {
+        $ChocoUninstallAttempt = $True
+        [System.Collections.ArrayList]$ChocoUninstallFailuresPrep = @()
+        [System.Collections.ArrayList]$ChocoUninstallSuccesses = @()
+
+        $ErrorFile = [IO.Path]::Combine([IO.Path]::GetTempPath(), [IO.Path]::GetRandomFileName())
+        #$ErrorFile
+        foreach ($ProgramObj in $ChocolateyInstalledProgramObjects) {
+            #Write-Host "Running $($(Get-Command choco).Source) uninstall $($ProgramObj.ProgramName) -y"
+            $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
+            #$ProcessInfo.WorkingDirectory = $BinaryPath | Split-Path -Parent
+            $ProcessInfo.FileName = $(Get-Command choco).Source
+            $ProcessInfo.RedirectStandardError = $true
+            $ProcessInfo.RedirectStandardOutput = $true
+            $ProcessInfo.UseShellExecute = $false
+            $ProcessInfo.Arguments = "uninstall $($ProgramObj.ProgramName) -y --force" # optionally -n --remove-dependencies
+            $Process = New-Object System.Diagnostics.Process
+            $Process.StartInfo = $ProcessInfo
+            $Process.Start() | Out-Null
+            # Below $FinishedInAlottedTime returns boolean true/false
+            $FinishedInAlottedTime = $Process.WaitForExit(60000)
+            if (!$FinishedInAlottedTime) {
+                $Process.Kill()
+            }
+            $stdout = $Process.StandardOutput.ReadToEnd()
+            $stderr = $Process.StandardError.ReadToEnd()
+            $AllOutput = $stdout + $stderr
+
+            if ($AllOutput -match "failed") {
+                $null = $ChocoUninstallFailuresPrep.Add($ProgramObj)
+            }
+            else {
+                $null = $ChocoUninstallSuccesses.Add($ProgramObj)
+            }
+        }
+    }
+
+    # Re-Check all PackageManager Objects because an uninstall action may/may not have happened
+    try {
+        $PackageManagerInstallObjects = Get-PackageManagerInstallObjects -ProgramName $ProgramName -ErrorAction Stop
+        [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
+        [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
+        [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
+    }
+    catch {
+        Write-Error $_
+        $global:FunctionResult = "1"
+        return
+    }
+
+    if ($ChocolateyInstalledProgramObjects.Count -gt 0 -or $PSGetInstalledPackageObjects.Count -gt 0 -or $RegistryProperties.Count -gt 0) {
+        Write-Warning "The program $ProgramName did NOT cleanly uninstall. Please review output of the Uninstall-Program function for details about lingering references."
+    }
+
+    [pscustomobject]@{
+        ChocolateyInstalledProgramObjects   = [array]$ChocolateyInstalledProgramObjects
+        PSGetInstalledPackageObjects        = [array]$PSGetInstalledPackageObjects
+        RegistryProperties                  = [array]$RegistryProperties
+    }
+
+    #endregion >> Main Body
+}
+
+function Check-InstalledPrograms {
+    [CmdletBinding(
+        PositionalBinding=$True,
+        DefaultParameterSetName='Default Param Set'
+    )]
+    Param(
+        [Parameter(
+            Mandatory=$False,
+            ParameterSetName='Default Param Set'
+        )]
+        [string]$ProgramTitleSearchTerm,
+
+        [Parameter(
+            Mandatory=$False,
+            ParameterSetName='Default Param Set'
+        )]
+        [string[]]$HostName = $env:COMPUTERNAME,
+
+        [Parameter(
+            Mandatory=$False,
+            ParameterSetName='Secondary Param Set'
+        )]
+        [switch]$AllADWindowsComputers
+
+    )
+
+    ##### BEGIN Variable/Parameter Transforms and PreRun Prep #####
+
+    $uninstallWow6432Path = "\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    $uninstallPath = "\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+
+    $RegPaths = @(
+        "HKLM:$uninstallWow6432Path",
+        "HKLM:$uninstallPath",
+        "HKCU:$uninstallWow6432Path",
+        "HKCU:$uninstallPath"
+    )
+    
+    ##### END Variable/Parameter Transforms and PreRun Prep #####
+
+    ##### BEGIN Main Body #####
+    # Get a list of Windows Computers from AD
+    if ($AllADWindowsComputers) {
+        $ComputersArray = $(Get-ADComputer -Filter * -Property * | Where-Object {$_.OperatingSystem -like "*Windows*"}).Name
+    }
+    else {
+        $ComputersArray = $env:COMPUTERNAME
+    }
+
+    foreach ($computer in $ComputersArray) {
+        if ($computer -eq $env:COMPUTERNAME -or $computer.Split("\.")[0] -eq $env:COMPUTERNAME) {
+            try {
+                $InstalledPrograms = foreach ($regpath in $RegPaths) {if (Test-Path $regpath) {Get-ItemProperty $regpath}}
+                if (!$?) {
+                    throw
+                }
+            }
+            catch {
+                Write-Warning "Unable to find registry path(s) on $computer. Skipping..."
+                continue
+            }
+        }
+        else {
+            try {
+                $InstalledPrograms = Invoke-Command -ComputerName $computer -ScriptBlock {
+                    foreach ($regpath in $RegPaths) {
+                        if (Test-Path $regpath) {
+                            Get-ItemProperty $regpath
+                        }
+                    }
+                } -ErrorAction SilentlyContinue
+                if (!$?) {
+                    throw
+                }
+            }
+            catch {
+                Write-Warning "Unable to connect to $computer. Skipping..."
+                continue
+            }
+        }
+
+        if ($ProgramTitleSearchTerm) {
+            $InstalledPrograms | Where-Object {$_.DisplayName -match "$ProgramTitleSearchTerm"}
+        }
+        else {
+            $InstalledPrograms
+        }
+    }
+
+    ##### END Main Body #####
+
+}
+
+# From: https://gallery.technet.microsoft.com/scriptcenter/Get-Last-Write-Time-and-06dcf3fb
+function Add-LastWriteTimeToRegKeys {
+    [CmdletBinding()]
+    param ()
+
+    # NOTE: If you use this method, do not import the Add-RegKeyMember function and Get-ChildItem proxy function
+
+    Add-Type @"
+using System; 
+using System.Text;
+using System.Runtime.InteropServices; 
+
+namespace CustomNameSpace {
+    public class advapi32 {
+        [DllImport("advapi32.dll", CharSet = CharSet.Auto)]
+        public static extern Int32 RegQueryInfoKey(
+            Microsoft.Win32.SafeHandles.SafeRegistryHandle hKey,
+            StringBuilder lpClass,
+            [In, Out] ref UInt32 lpcbClass,
+            UInt32 lpReserved,
+            out UInt32 lpcSubKeys,
+            out UInt32 lpcbMaxSubKeyLen,
+            out UInt32 lpcbMaxClassLen,
+            out UInt32 lpcValues,
+            out UInt32 lpcbMaxValueNameLen,
+            out UInt32 lpcbMaxValueLen,
+            out UInt32 lpcbSecurityDescriptor,
+            out Int64 lpftLastWriteTime
+        );
+    }
+}
+"@
+
+    Update-TypeData -TypeName Microsoft.Win32.RegistryKey -MemberType ScriptProperty -MemberName LastWriteTime -Value {
+        $LastWriteTime = $null
+                
+        $Return = [CustomNameSpace.advapi32]::RegQueryInfoKey(
+            $this.Handle,
+            $null,       # ClassName
+            [ref] 0,     # ClassNameLength
+            $null,  # Reserved
+            [ref] $null, # SubKeyCount
+            [ref] $null, # MaxSubKeyNameLength
+            [ref] $null, # MaxClassLength
+            [ref] $null, # ValueCount
+            [ref] $null, # MaxValueNameLength 
+            [ref] $null, # MaxValueValueLength 
+            [ref] $null, # SecurityDescriptorSize
+            [ref] $LastWriteTime
+        )
+
+        if ($Return -ne 0) {
+            "[ERROR]"
+        }
+        else {
+            # Return datetime object:
+            [datetime]::FromFileTime($LastWriteTime)
+        }
+    }
+
+    Update-TypeData -TypeName Microsoft.Win32.RegistryKey -MemberType ScriptProperty -MemberName ClassName -Value {
+        $ClassLength = 255 # Buffer size (class name is rarely used, and when it is, I've never seen 
+                            # it more than 8 characters. Buffer can be increased here, though. 
+        $ClassName = New-Object System.Text.StringBuilder $ClassLength  # Will hold the class name
+                
+        $Return = [CustomNameSpace.advapi32]::RegQueryInfoKey(
+            $this.Handle,
+            $ClassName,
+            [ref] $ClassLength,
+            $null,  # Reserved
+            [ref] $null, # SubKeyCount
+            [ref] $null, # MaxSubKeyNameLength
+            [ref] $null, # MaxClassLength
+            [ref] $null, # ValueCount
+            [ref] $null, # MaxValueNameLength 
+            [ref] $null, # MaxValueValueLength 
+            [ref] $null, # SecurityDescriptorSize
+            [ref] $null  # LastWriteTime
+        )
+
+        if ($Return -ne 0) {
+            "[ERROR]"
+        }
+        else {
+            # Return class name
+            $ClassName.ToString()
+        }
+    }
+}
+
+# Originally from: http://www.scconfigmgr.com/2014/08/22/how-to-get-msi-file-information-with-powershell/
+function Get-MSIFileInfo {
+    [CmdletBinding()]
+    param(
+        [parameter(Mandatory=$true)]
+        [ValidateNotNullOrEmpty()]
+        [System.IO.FileInfo]$Path,
+    
+        [parameter(Mandatory=$true)]
+        [ValidateNotNullOrEmpty()]
+        [ValidateSet("ProductCode", "ProductVersion", "ProductName", "Manufacturer", "ProductLanguage", "FullVersion")]
+        [string]$Property
+    )
+    Process {
+        try {
+            # Read property from MSI database
+            $WindowsInstaller = New-Object -ComObject WindowsInstaller.Installer
+            $MSIDatabase = $WindowsInstaller.GetType().InvokeMember("OpenDatabase", "InvokeMethod", $null, $WindowsInstaller, @($Path.FullName, 0))
+            $Query = "SELECT Value FROM Property WHERE Property = '$($Property)'"
+            $View = $MSIDatabase.GetType().InvokeMember("OpenView", "InvokeMethod", $null, $MSIDatabase, ($Query))
+            $View.GetType().InvokeMember("Execute", "InvokeMethod", $null, $View, $null)
+            $Record = $View.GetType().InvokeMember("Fetch", "InvokeMethod", $null, $View, $null)
+            $Value = $Record.GetType().InvokeMember("StringData", "GetProperty", $null, $Record, 1)
+    
+            # Commit database and close view
+            $MSIDatabase.GetType().InvokeMember("Commit", "InvokeMethod", $null, $MSIDatabase, $null)
+            $View.GetType().InvokeMember("Close", "InvokeMethod", $null, $View, $null)           
+            $MSIDatabase = $null
+            $View = $null
+    
+            # Return the value
+            return $Value
+        } 
+        catch {
+            Write-Warning -Message $_.Exception.Message ; break
+        }
+    }
+    End {
+        # Run garbage collection and release ComObject
+        [System.Runtime.Interopservices.Marshal]::ReleaseComObject($WindowsInstaller) | Out-Null
+        [System.GC]::Collect()
+    }
+}
+
+function Get-PackageManagerInstallObjects {
+    [CmdletBinding()]
+    Param (
+        [Parameter(Mandatory=$True)]
+        [string]$ProgramName
+    )
+
+    # Generate regex string to loosely match Program Name
+    $PNRegexPrep = $([char[]]$ProgramName | foreach {"([\.]|[$_])+"}) -join ""
+    $PNRegexPrep2 = $($PNRegexPrep -split "\+")[1..$($($PNRegexPrep -split "\+").Count)] -join "+"
+    $PNRegex = "^$([char[]]$ProgramName[0])+$PNRegexPrep2"
+    # For example, $PNRegex string for $ProgramName 'nodejs' should be:
+    #     ^n+([\.]|[o])+([\.]|[d])+([\.]|[e])+([\.]|[j])+([\.]|[s])+
+
+    # If PackageManagement/PowerShellGet is installed, determine if $ProgramName is installed
+    if ([bool]$(Get-Command Get-Package -ErrorAction SilentlyContinue)) {
+        $PSGetInstalledPrograms = Get-Package
+        $PSGetInstalledPackageObjectsFinal = $PSGetInstalledPrograms | Where-Object {$_.Name -match $PNRegex}
+
+        # Add some more information regarding these packages - specifically MSIFileItem, MSILastWriteTime, and RegLastWriteTime
+        # This info will come in handy if there's a specific order related packages needed to be uninstalled in so that it's clean.
+        # (In other words, with this info, we can sort by when specific packages were installed, and uninstall latest to earliest
+        # so that there aren't any race conditions)
+        [array]$CheckInstalledPrograms = Check-InstalledPrograms -ProgramTitleSearchTerm $PNRegex
+        $WindowsInstallerMSIs = Get-ChildItem -Path "C:\Windows\Installer" -File
+        $RelevantMSIFiles = foreach ($FileItem in $WindowsInstallerMSIs) {
+            $MSIProductName = Get-MSIFileInfo -Path $FileItem.FullName -Property ProductName -WarningAction SilentlyContinue
+            if ($MSIProductName -match $PNRegex) {
+                [pscustomobject]@{
+                    ProductName = $MSIProductName
+                    FileItem    = $FileItem
+                }
+            }
+        }
+        
+        if ($CheckInstalledPrograms.Count -gt 0) {
+            if ($($(Get-Item $CheckInstalledPrograms[0].PSPath) | Get-Member).Name -notcontains "LastWriteTime") {
+                Add-LastWriteTimeToRegKeys
+            }
+
+            foreach ($RegPropertiesCollection in $CheckInstalledPrograms) {
+                $RegPropertiesCollection | Add-Member -MemberType NoteProperty -Name "LastWriteTime" -Value $(Get-Item $RegPropertiesCollection.PSPath).LastWriteTime
+            }
+            [System.Collections.ArrayList]$CheckInstalledPrograms = [System.Collections.ArrayList][array]$($CheckInstalledPrograms | Sort-Object -Property LastWriteTime)
+            # Make sure that the LATEST Registry change comes FIRST in the ArrayList
+            $CheckInstalledPrograms.Reverse()
+
+            foreach ($Package in $PSGetInstalledPackageObjectsFinal) {
+                $RelevantMSIFile = $RelevantMSIFiles | Where-Object {$_.ProductName -eq $Package.Name}
+                $Package | Add-Member -MemberType NoteProperty -Name "MSIFileItem" -Value $RelevantMSIFile.FileItem
+                $Package | Add-Member -MemberType NoteProperty -Name "MSILastWriteTime" -Value $RelevantMSIFile.FileItem.LastWriteTime
+
+                if ($Package.TagId -ne $null) {
+                    $RegProperties = $CheckInstalledPrograms | Where-Object {$_.PSChildName -match $Package.TagId}
+                    $LastWriteTime = $(Get-Item $RegProperties.PSPath).LastWriteTime
+                    $Package | Add-Member -MemberType NoteProperty -Name "RegLastWriteTime" -Value $LastWriteTime
+                }
+            }
+            [System.Collections.ArrayList]$PSGetInstalledPackageObjectsFinal = [array]$($PSGetInstalledPackageObjectsFinal | Sort-Object -Property MSILastWriteTime)
+            # Make sure that the LATEST install comes FIRST in the ArrayList
+            $PSGetInstalledPackageObjectsFinal.Reverse()
+        }        
+    }
+
+    # If the Chocolatey CmdLine is installed, get a list of programs installed via Chocolatey
+    if ([bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
+        #$ChocolateyInstalledProgramsPrep = clist --local-only
+        
+        $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
+        #$ProcessInfo.WorkingDirectory = $BinaryPath | Split-Path -Parent
+        $ProcessInfo.FileName = $(Get-Command clist).Source
+        $ProcessInfo.RedirectStandardError = $true
+        $ProcessInfo.RedirectStandardOutput = $true
+        $ProcessInfo.UseShellExecute = $false
+        $ProcessInfo.Arguments = "--local-only"
+        $Process = New-Object System.Diagnostics.Process
+        $Process.StartInfo = $ProcessInfo
+        $Process.Start() | Out-Null
+        # Below $FinishedInAlottedTime returns boolean true/false
+        $FinishedInAlottedTime = $Process.WaitForExit(15000)
+        if (!$FinishedInAlottedTime) {
+            $Process.Kill()
+        }
+        $stdout = $Process.StandardOutput.ReadToEnd()
+        $stderr = $Process.StandardError.ReadToEnd()
+        $AllOutput = $stdout + $stderr
+
+        $ChocolateyInstalledProgramsPrep = $($stdout -split "`n")[1..$($($stdout -split "`n").Count-3)]
+
+        [System.Collections.ArrayList]$ChocolateyInstalledProgramObjects = @()
+
+        foreach ($program in $ChocolateyInstalledProgramsPrep) {
+            $programParsed = $program -split " "
+            $PSCustomObject = [pscustomobject]@{
+                ProgramName     = $programParsed[0]
+                Version         = $programParsed[1]
+            }
+
+            $null = $ChocolateyInstalledProgramObjects.Add($PSCustomObject)
+        }
+
+        $ChocolateyInstalledProgramObjectsFinal = $ChocolateyInstalledProgramObjects | Where-Object {$_.ProgramName -match $PNRegex}
+    }
+
+    [pscustomobject]@{
+        ChocolateyInstalledProgramObjects           = $ChocolateyInstalledProgramObjectsFinal
+        PSGetInstalledPackageObjects                = $PSGetInstalledPackageObjectsFinal
+        RegistryProperties                          = $CheckInstalledPrograms
+    }
+}
+
+function Install-ChocolateyCmdLine {
+    [CmdletBinding()]
+    Param (
+        [Parameter(Mandatory=$False)]
+        [switch]$NoUpdatePackageManagement
+    )
+
+    ##### BEGIN Native Helper Functions #####
+
+    function GetElevation {
+        if ($PSVersionTable.PSEdition -eq "Desktop" -or $PSVersionTable.Platform -eq "Win32NT" -or $PSVersionTable.PSVersion.Major -le 5) {
+            [System.Security.Principal.WindowsPrincipal]$currentPrincipal = New-Object System.Security.Principal.WindowsPrincipal(
+                [System.Security.Principal.WindowsIdentity]::GetCurrent()
+            )
+    
+            [System.Security.Principal.WindowsBuiltInRole]$administratorsRole = [System.Security.Principal.WindowsBuiltInRole]::Administrator
+    
+            if($currentPrincipal.IsInRole($administratorsRole)) {
+                return $true
+            }
+            else {
+                return $false
+            }
+        }
+        
+        if ($PSVersionTable.Platform -eq "Unix") {
+            if ($(whoami) -eq "root") {
+                return $true
+            }
+            else {
+                return $false
+            }
+        }
+    }
+
+    ##### END Native Helper Functions #####
+
+    ##### BEGIN Variable/Parameter Transforms and PreRun Prep #####
+    # Invoke-WebRequest fix...
+    [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls"
+
+    if (!$(GetElevation)) {
+        Write-Error "The $($MyInvocation.MyCommand.Name) function must be ran from an elevated PowerShell Session (i.e. 'Run as Administrator')! Halting!"
+        $global:FunctionResult = "1"
+        return
+    }
+
+    Write-Host "Please wait..."
+    $global:FunctionResult = "0"
+    $MyFunctionsUrl = "https://raw.githubusercontent.com/pldmgg/misc-powershell/master/MyFunctions"
+
+    if (!$NoUpdatePackageManagement) {
+        if (![bool]$(Get-Command Update-PackageManagement -ErrorAction SilentlyContinue)) {
+            $UpdatePMFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Update-PackageManagement.ps1"
+            try {
+                Invoke-Expression $([System.Net.WebClient]::new().DownloadString($UpdatePMFunctionUrl))
+            }
+            catch {
+                Write-Error $_
+                Write-Error "Unable to load the Update-PackageManagement function! Halting!"
+                $global:FunctionResult = "1"
+                return
+            }
+        }
+
+        try {
+            $global:FunctionResult = "0"
+            $UPMResult = Update-PackageManagement -AddChocolateyPackageProvider -ErrorAction SilentlyContinue -ErrorVariable UPMErr
+            if ($global:FunctionResult -eq "1" -or $UPMResult -eq $null) {throw "The Update-PackageManagement function failed!"}
+        }
+        catch {
+            Write-Error $_
+            Write-Host "Errors from the Update-PackageManagement function are as follows:"
+            Write-Error $($UPMErr | Out-String)
+            $global:FunctionResult = "1"
+            return
+        }
+    }
+
+    if (![bool]$(Get-Command Refresh-ChocolateyEnv -ErrorAction SilentlyContinue)) {
+        $RefreshCEFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Refresh-ChocolateyEnv.ps1"
+        try {
+            Invoke-Expression $([System.Net.WebClient]::new().DownloadString($RefreshCEFunctionUrl))
+        }
+        catch {
+            Write-Error $_
+            Write-Error "Unable to load the Refresh-ChocolateyEnv function! Halting!"
+            $global:FunctionResult = "1"
+            return
+        }
+    }
+
+    ##### END Variable/Parameter Transforms and PreRun Prep #####
+
+
+    ##### BEGIN Main Body #####
+
+    if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
+        # The below Install-Package Chocolatey screws up $env:Path, so restore it afterwards
+        $OriginalEnvPath = $env:Path
+
+        # Installing Package Providers is spotty sometimes...Using while loop 3 times before failing
+        $Counter = 0
+        while ($(Get-PackageProvider).Name -notcontains "Chocolatey" -and $Counter -lt 3) {
+            Install-PackageProvider -Name Chocolatey -Force -Confirm:$false -WarningAction SilentlyContinue
+            $Counter++
+            Start-Sleep -Seconds 5
+        }
+        if ($(Get-PackageProvider).Name -notcontains "Chocolatey") {
+            Write-Error "Unable to install the Chocolatey Package Provider / Repo for PackageManagement/PowerShellGet! Halting!"
+            $global:FunctionResult = "1"
+            return
+        }
+
+        if (![bool]$(Get-Package -Name Chocolatey -ProviderName Chocolatey -ErrorAction SilentlyContinue)) {
+            # NOTE: The PackageManagement install of choco is unreliable, so just in case, fallback to the Chocolatey cmdline for install
+            $null = Install-Package Chocolatey -Provider Chocolatey -Force -Confirm:$false -ErrorVariable ChocoInstallError -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+            
+            if ($ChocoInstallError.Count -gt 0) {
+                Write-Warning "There was a problem installing the Chocolatey CmdLine via PackageManagement/PowerShellGet!"
+                $InstallViaOfficialScript = $True
+                Uninstall-Package Chocolatey -Force -ErrorAction SilentlyContinue
+            }
+
+            if ($ChocoInstallError.Count -eq 0) {
+                $PMPGetInstall = $True
+            }
+        }
+
+        # Try and find choco.exe
+        try {
+            Write-Host "Refreshing `$env:Path..."
+            $global:FunctionResult = "0"
+            $null = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
+            
+            if ($RCEErr.Count -gt 0 -and
+            $global:FunctionResult -eq "1" -and
+            ![bool]$($RCEErr -match "Neither the Chocolatey PackageProvider nor the Chocolatey CmdLine appears to be installed!")) {
+                throw "The Refresh-ChocolateyEnv function failed! Halting!"
+            }
+        }
+        catch {
+            Write-Error $_
+            Write-Host "Errors from the Refresh-ChocolateyEnv function are as follows:"
+            Write-Error $($RCEErr | Out-String)
+            $global:FunctionResult = "1"
+            return
+        }
+
+        if ($PMPGetInstall) {
+            # It's possible that PowerShellGet didn't run the chocolateyInstall.ps1 script to actually install the
+            # Chocolatey CmdLine. So do it manually.
+            if (Test-Path "C:\Chocolatey") {
+                $ChocolateyPath = "C:\Chocolatey"
+            }
+            elseif (Test-Path "C:\ProgramData\chocolatey") {
+                $ChocolateyPath = "C:\ProgramData\chocolatey"
+            }
+            else {
+                Write-Warning "Unable to find Chocolatey directory! Halting!"
+                Write-Host "Installing via official script at https://chocolatey.org/install.ps1"
+                $InstallViaOfficialScript = $True
+            }
+            
+            if ($ChocolateyPath) {
+                $ChocolateyInstallScript = $(Get-ChildItem -Path $ChocolateyPath -Recurse -File -Filter "*chocolateyinstall.ps1").FullName | Where-Object {
+                    $_ -match ".*?chocolatey\.[0-9].*?chocolateyinstall.ps1$"
+                }
+
+                if (!$ChocolateyInstallScript) {
+                    Write-Warning "Unable to find chocolateyinstall.ps1!"
+                    $InstallViaOfficialScript = $True
+                }
+            }
+
+            if ($ChocolateyInstallScript) {
+                try {
+                    Write-Host "Trying PowerShellGet Chocolatey CmdLine install script from $ChocolateyInstallScript ..." -ForegroundColor Yellow
+                    & $ChocolateyInstallScript
+                }
+                catch {
+                    Write-Error $_
+                    Write-Error "The Chocolatey Install Script $ChocolateyInstallScript has failed!"
+
+                    if ([bool]$(Get-Package $ProgramName)) {
+                        Uninstall-Package Chocolatey -Force -ErrorAction SilentlyContinue
+                    }
+                }
+            }
+        }
+
+        # If we still can't find choco.exe, then use the Chocolatey install script from chocolatey.org
+        if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue) -or $InstallViaOfficialScript) {
+            $ChocolateyInstallScriptUrl = "https://chocolatey.org/install.ps1"
+            try {
+                Invoke-Expression $([System.Net.WebClient]::new().DownloadString($ChocolateyInstallScriptUrl))
+            }
+            catch {
+                Write-Error $_
+                Write-Error "Unable to install Chocolatey via the official chocolatey.org script! Halting!"
+                $global:FunctionResult = "1"
+                return
+            }
+
+            $PMPGetInstall = $False
+        }
+        
+        # If we STILL can't find choco.exe, then Refresh-ChocolateyEnv a third time...
+        #if (![bool]$($env:Path -split ";" -match "chocolatey\\bin")) {
+        if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
+            # ...and then find it again and add it to $env:Path via Refresh-ChocolateyEnv function
+            if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
+                try {
+                    Write-Host "Refreshing `$env:Path..."
+                    $global:FunctionResult = "0"
+                    $null = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
+                    
+                    if ($RCEErr.Count -gt 0 -and
+                    $global:FunctionResult -eq "1" -and
+                    ![bool]$($RCEErr -match "Neither the Chocolatey PackageProvider nor the Chocolatey CmdLine appears to be installed!")) {
+                        throw "The Refresh-ChocolateyEnv function failed! Halting!"
+                    }
+                }
+                catch {
+                    Write-Error $_
+                    Write-Host "Errors from the Refresh-ChocolateyEnv function are as follows:"
+                    Write-Error $($RCEErr | Out-String)
                     $global:FunctionResult = "1"
                     return
                 }
             }
         }
 
-        if ($OriginalConfigInfo.RegistryKeyPropertiesCreated.Count -gt 0) {
-            [System.Collections.ArrayList]$RegistryKeyPropertiesRemoved = @()
-
-            foreach ($Property in $OriginalConfigInfo.RegistryKeyPropertiesCreated) {
-                $PropertyName = $($Property | Get-Member -Type NoteProperty | Where-Object {$_.Name -notmatch "PSPath|PSParentPath|PSChildName|PSDrive|PSProvider"}).Name
-                $PropertyPath = $Property.PSPath
-
-                if (Test-Path $PropertyPath) {
-                    if ([bool]$(Get-ItemProperty -Path $PropertyPath -Name $PropertyName -ErrorAction SilentlyContinue)) {
-                        Remove-ItemProperty -Path $PropertyPath -Name $PropertyName
-                        $null = $RegistryKeyPropertiesRemoved.Add($Property)
-                    }
-                }
-            }
-
-            $Output.Add("RegistryKeyPropertiesRemoved",$RegistryKeyPropertiesRemoved)
-        }
-
-        if ($OriginalConfigInfo.RegistryKeysCreated.Count -gt 0) {
-            [System.Collections.ArrayList]$RegistryKeysRemoved = @()
-
-            foreach ($RegKey in $OriginalConfigInfo.RegistryKeysCreated) {
-                $RegPath = $RegKey.PSPath
-
-                if (Test-Path $RegPath) {
-                    Remove-Item $RegPath -Recurse -Force
-                    $null = $RegistryKeysRemoved.Add($RegKey)
-                }
-            }
-
-            $Output.Add("RegistryKeysRemoved",$RegistryKeysRemoved)
-        }
-
-        if ($Output.Count -gt 0) {
-            $Output.Add("RevertConfigChangesFilePath",$SudoSessionRevertChangesPSObject)
-
-            $FinalOutput = [pscustomobject]$Output
-            $FinalOutput | Export-CliXml $SudoSessionRevertChangesPSObject
-        }
-    }
-    
-    if (!$(GetElevation) -and $ExistingSudoSession) {
-        if ($ExistingSudoSession.State -eq "Opened") {
-            $SystemConfigSB = {
-                $OriginalConfigInfo = $using:OriginalConfigInfo
-
-                # Collect $Output as we go...
-                $Output = [ordered]@{}
-
-                if ($OriginalConfigInfo.WSMANServerCredSSPStateChange) {
-                    Set-Item -Path "WSMan:\localhost\Service\Auth\CredSSP" -Value false
-                    $Output.Add("CredSSPServer","Off")
-                }
-                if ($OriginalConfigInfo.WSMANClientCredSSPStateChange) {
-                    Set-Item -Path "WSMan:\localhost\Client\Auth\CredSSP" -Value false
-                    $Output.Add("CredSSPClient","Off")
-                }
-                if ($OriginalConfigInfo.WinRMStateChange) {
-                    if ([bool]$(Test-WSMan -ErrorAction SilentlyContinue)) {
-                        try {
-                            Disable-PSRemoting -Force -ErrorAction Stop -WarningAction SilentlyContinue
-                            $Output.Add("PSRemoting","Disabled")
-                            Stop-Service winrm -ErrorAction Stop
-                            $Output.Add("WinRMService","Stopped")
-                            Set-Item "WSMan:\localhost\Service\AllowRemoteAccess" -Value false -ErrorAction Stop
-                            $Output.Add("WSMANServerAllowRemoteAccess",$False)
-                        }
-                        catch {
-                            Write-Error $_
-                            if ($Output.Count -gt 0) {[pscustomobject]$Output}
-                            $global:FunctionResult = "1"
-                            return
-                        }
-                    }
-                }
-        
-                if ($OriginalConfigInfo.RegistryKeyPropertiesCreated.Count -gt 0) {
-                    [System.Collections.ArrayList]$RegistryKeyPropertiesRemoved = @()
-
-                    foreach ($Property in $OriginalConfigInfo.RegistryKeyPropertiesCreated) {
-                        $PropertyName = $($Property | Get-Member -Type NoteProperty | Where-Object {$_.Name -notmatch "PSPath|PSParentPath|PSChildName|PSDrive|PSProvider"}).Name
-                        $PropertyPath = $Property.PSPath
-        
-                        if (Test-Path $PropertyPath) {
-                            if ([bool]$(Get-ItemProperty -Path $PropertyPath -Name $PropertyName -ErrorAction SilentlyContinue)) {
-                                Remove-ItemProperty -Path $PropertyPath -Name $PropertyName
-                                $null = $RegistryKeyPropertiesRemoved.Add($Property)
-                            }
-                        }
-                    }
-
-                    $Output.Add("RegistryKeyPropertiesRemoved",$RegistryKeyPropertiesRemoved)
-                }
-        
-                if ($OriginalConfigInfo.RegistryKeysCreated.Count -gt 0) {
-                    [System.Collections.ArrayList]$RegistryKeysRemoved = @()
-
-                    foreach ($RegKey in $OriginalConfigInfo.RegistryKeysCreated) {
-                        $RegPath = $RegKey.PSPath
-        
-                        if (Test-Path $RegPath) {
-                            Remove-Item $RegPath -Recurse -Force
-                            $null = $RegistryKeysRemoved.Add($RegKey)
-                        }
-                    }
-
-                    $Output.Add("RegistryKeysRemoved",$RegistryKeysRemoved)
-                }
-
-                if ($Output.Count -gt 0) {
-                    [pscustomobject]$Output
-                }
-            }
-
-            $FinalOutput = Invoke-Command -Session $ExistingSudoSession -Scriptblock $SystemConfigSB
-            $FinalOutput | Export-CliXml $SudoSessionRevertChangesPSObject
-        }
-        else {
-            $useAltMethod = $True
-        }
-    }
-
-    if ($(!$(GetElevation) -and !$ExistingSudoSession) -or $UseAltMethod) {
-        [System.Collections.ArrayList]$SystemConfigScript = @()
-
-        $Line = '$Output = [ordered]@{}'
-        $null = $SystemConfigScript.Add($Line)
-
-        if ($OriginalConfigInfo.WSMANServerCredSSPStateChange) {
-            $Line = 'Set-Item -Path "WSMan:\localhost\Service\Auth\CredSSP" -Value false'
-            $null = $SystemConfigScript.Add($Line)
-            $Line = '$Output.Add("CredSSPServer","Off")'
-            $null = $SystemConfigScript.Add($Line)
-        }
-        if ($OriginalConfigInfo.WSMANClientCredSSPStateChange) {
-            $Line = 'Set-Item -Path "WSMan:\localhost\Client\Auth\CredSSP" -Value false'
-            $null = $SystemConfigScript.Add($Line)
-            $Line = '$Output.Add("CredSSPClient","Off")'
-            $null = $SystemConfigScript.Add($Line)
-        }
-        if ($OriginalConfigInfo.WinRMStateChange) {
-            if ([bool]$(Test-WSMan -ErrorAction SilentlyContinue)) {
-                $AdditionalLines = @(
-                    'try {'
-                    '    Disable-PSRemoting -Force -ErrorAction Stop -WarningAction SilentlyContinue'
-                    '    $Output.Add("PSRemoting","Disabled")'
-                    '    Stop-Service winrm -ErrorAction Stop'
-                    '    $Output.Add("WinRMService","Stopped")'
-                    '    Set-Item "WSMan:\localhost\Service\AllowRemoteAccess" -Value false -ErrorAction Stop'
-                    '    $Output.Add("WSMANServerAllowRemoteAccess",$False)'
-                    '}'
-                    'catch {'
-                    '    Write-Error $_'
-                    '    if ($Output.Count -gt 0) {[pscustomobject]$Output}'
-                    '    $global:FunctionResult = "1"'
-                    '    return'
-                    '}'
-                )
-                foreach ($AdditionalLine in $AdditionalLines) {
-                    $null = $SystemConfigScript.Add($AdditionalLine)
-                }
-            }
-        }
-
-        if ($OriginalConfigInfo.RegistryKeyPropertiesCreated.Count -gt 0) {
-            $Line = '[System.Collections.ArrayList]$RegistryKeyPropertiesRemoved = @()'
-            $null = $SystemConfigScript.Add($Line)
-
-            foreach ($Property in $OriginalConfigInfo.RegistryKeyPropertiesCreated) {
-                $PropertyName = $($Property | Get-Member -Type NoteProperty | Where-Object {$_.Name -notmatch "PSPath|PSParentPath|PSChildName|PSDrive|PSProvider"}).Name
-                $PropertyPath = $Property.PSPath
-
-                if (Test-Path $PropertyPath) {
-                    $MoreLinesToAdd = @(
-                        "if ([bool](Get-ItemProperty -Path '$PropertyPath' -Name '$PropertyName' -EA SilentlyContinue)) {"
-                        "    `$null = `$RegistryKeyPropertiesRemoved.Add((Get-ItemProperty -Path '$PropertyPath' -Name '$PropertyName'))"
-                        "    Remove-ItemProperty -Path '$PropertyPath' -Name '$PropertyName'"
-                        "}"
-                    )
-
-                    foreach ($Line in $MoreLinesToAdd) {
-                        $null = $SystemConfigScript.Add($Line)
-                    }
-                }
-            }
-
-            $Line = '$Output.Add("RegistryKeyPropertiesRemoved",$RegistryKeyPropertiesRemoved)'
-            $null = $SystemConfigScript.Add($Line)
-        }
-
-        if ($OriginalConfigInfo.RegistryKeysCreated.Count -gt 0) {
-            $Line = '[System.Collections.ArrayList]$RegistryKeysRemoved = @()'
-            $null = $SystemConfigScript.Add($Line)
-
-            foreach ($RegKey in $OriginalConfigInfo.RegistryKeysCreated) {
-                $RegPath = $RegKey.PSPath
-
-                if (Test-Path $RegPath) {
-                    $Line = "if ([bool](Get-Item '$RegPath' -EA SilentlyContinue)) {`$null = `$RegistryKeysRemoved.Add((Get-Item '$RegPath'))}"
-                    $null = $SystemConfigScript.Add($Line)
-                    $Line = "Remove-Item '$RegPath' -Recurse -Force"
-                    $null = $SystemConfigScript.Add($Line)
-                }
-            }
-
-            $Line = '$Output.Add("RegistryKeysRemoved",$RegistryKeysRemoved)'
-            $null = $SystemConfigScript.Add($Line)
-        }
-
-        $AdditionalLines = @(
-            'if ($Output.Count -gt 0) {'
-            "    `$Output.Add('RevertConfigChangesFilePath','$SudoSessionRevertChangesPSObject')"
-            "    [pscustomobject]`$Output | Export-CliXml '$SudoSessionRevertChangesPSObject'"
-            '}'
-        )
-        foreach ($AdditionalLine in $AdditionalLines) {
-            $null = $SystemConfigScript.Add($AdditionalLine)
-        }
-
-        $SystemConfigScriptFilePath = "$SudoSessionFolder\SystemConfigScript.ps1"
-        $SystemConfigScript | Set-Content $SystemConfigScriptFilePath
-
-        # IMPORTANT NOTE: You CANNOT use the RunAs Verb if UseShellExecute is $false, and you CANNOT use
-        # RedirectStandardError or RedirectStandardOutput if UseShellExecute is $true, so we have to write
-        # output to a file temporarily
-        $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
-        $ProcessInfo.FileName = "powershell.exe"
-        $ProcessInfo.RedirectStandardError = $false
-        $ProcessInfo.RedirectStandardOutput = $false
-        $ProcessInfo.UseShellExecute = $true
-        $ProcessInfo.Arguments = "-NoProfile -NonInteractive -WindowStyle Hidden -Command `"& $SystemConfigScriptFilePath`""
-        $ProcessInfo.Verb = "RunAs"
-        $Process = New-Object System.Diagnostics.Process
-        $Process.StartInfo = $ProcessInfo
-        $Process.Start() | Out-Null
-        $Process.WaitForExit()
-        
-        $FinalOutput = Import-CliXML $SudoSessionRevertChangesPSObject
-    }
-
-    $FinalOutput
-
-    ##### END Main Body #####
-        
-}
-
-
-<#
-    .SYNOPSIS
-        Sudo for PowerShell! This function allows you to run a command, expression, or scriptblock as if you were
-        in an elevated (i.e. "Run as Administrator") context. If you supply credentials for a different user
-        that has Admin privileges, you can run the commands as that other user.
-
-        This Start-SudoSession's alias is 'sudo' so that you can run commands via:
-            sudo {Install-Module ...}
-
-    .DESCRIPTION
-        When used in a Non-Elevated PowerShell session, this function:
-
-        1) Checks to make sure WinRM/WSMan is enabled and configured to allow CredSSP Authentication (if not then
-        configuration changes are made)
-
-        2) Checks the Local Group Policy Object...
-            Computer Configuration -> Administrative Templates -> System -> Credentials Delegation -> Allow Delegating Fresh Credentials
-        ...to make sure it is enabled and configured to allow connections via WSMAN/<LocalHostFQDN>
-
-        3) Creates an Elevated PSSession using the New-PSSession cmdlet
-
-        4) Runs the command/expression/scriptblock in the Elevated PSSession
-
-        5) Removes the Elevated PSSession and reverts all changes made (if any) to Local Group Policy and WSMAN/CredSSP config.
-
-    .PARAMETER UserName
-        This parameter takes a string that represents a UserName with Administrator privileges. Defaults to current user.
-
-        This parameter is mandatory if you do NOT use the -Credentials parameter.
-
-    .PARAMETER Password
-        This parameter takes a SecureString that represents the password for -UserName.
-
-        This parameter is mandatory if you do NOT use the -Credentials parameter.
-
-    .PARAMETER Credentials
-        This parameter takes a System.Management.Automation.PSCredential object.
-
-        This parameter is mandatory if you do NOT use the -Password parameter.
-
-    .PARAMETER ScriptBlock
-        This parameter is mandatory if you do NOT use the -StringExpression paramter.
-
-        This parameter takes a scriptblock that you would like to run in an elevated context.
-
-    .PARAMETER StringExpression
-        This parameter is mandatory is you do NOT use the -ScriptBlock parameter.
-
-        This parameter takes a string that represents a PowerShell expression that will be run in an elevated context.
-        Usage is similar to the -Command parameter of the Invoke-Expession cmdlet. See:
-        https://msdn.microsoft.com/en-us/powershell/reference/5.1/microsoft.powershell.utility/invoke-expression
-
-    .PARAMETER ExistingSudoSession
-        This parameter is OPTIONAL, but is used by default if there is an existing Sudo Session available.
-
-        This parameter defaults to using the global variable $global:NewSessionAndOriginalStatus created by the
-        New-SudoSession function - specifically its 'ElevatedPSSession' property.
-
-        Command(s)/Expression/ScriptBlock will, by default, be run in this existing Sudo Session, UNLESS
-        new Credenitals are provided, in which case a new Sudo Session will be created and the Command(s)/Expression/ScriptBlock
-        will be run in that context.
-
-    .EXAMPLE
-        PS C:\Users\zeroadmin> sudo {Install-Module -Name Assert}
-        Please enter the passworf for 'zero\zeroadmin': ***************
-
-#>
-function Start-SudoSession {
-    [CmdletBinding(DefaultParameterSetName='Supply UserName and Password')]
-    [Alias('sudo')]
-    Param(
-        [Parameter(
-            Mandatory=$False,
-            Position=0
-        )]
-        [scriptblock]$ScriptBlock,
-
-        [Parameter(Mandatory=$False)]
-        [string]$StringExpression,
-
-        [Parameter(
-            Mandatory=$False,
-            ParameterSetName='Supply UserName and Password'
-        )]
-        [string]$UserName,
-
-        [Parameter(
-            Mandatory=$False,
-            ParameterSetName='Supply UserName and Password'
-        )]
-        [securestring]$Password,
-
-        [Parameter(
-            Mandatory=$False,
-            ParameterSetName='Supply Credentials'
-        )]
-        [pscredential]$Credentials,
-
-        [Parameter(Mandatory=$False)]
-        [System.Management.Automation.Runspaces.PSSession]$ExistingSudoSession = $global:NewSessionAndOriginalStatus.ElevatedPSSession
-    )
-
-    ##### BEGIN Variable/Parameter Transforms and PreRun Prep #####
-    
-    if (GetElevation) {
-        Write-Error "The current PowerShell Session is already being run with elevated permissions. There is no reason to use the Start-SudoSession function. Halting!"
-        $global:FunctionResult = "1"
-        return
-    }
-
-    if (!$UserName) {
-        $UserName = GetCurrentUser
-    }
-    $SimpleUserName = $($UserName -split "\\")[-1]
-
-    if ($global:SudoCredentials) {
-        if (!$Credentials) {
-            if ($global:SudoCredentials.UserName -match "\\") {
-                $SudoUserName = $($global:SudoCredentials.UserName -split "\\")[-1]
-            }
-            else {
-                $SudoUserName = $global:SudoCredentials.UserName
-            }
-
-            if ($SudoUserName -eq $SimpleUserName) {
-                $Credentials = $global:SudoCredentials
-            }
-            elseif ($PSBoundParameters['UserName']) {
-                Remove-Variable -Name SudoCredentials -Force -ErrorAction SilentlyContinue
-            }
-            elseif (!$PSBoundParameters['UserName']) {
-                $ErrMsg = "The -UserName parameter was not used, so default current user (i.e. $(whoami)) " +
-                "was used. The Sudo Credentials available in the `$global:SudoCredentials object reference UserName " +
-                "$($global:SudoCredentials.UserName), which does not match $(whoami)! Halting!"
-                Write-Error $ErrMsg
-                $global:FunctionResult = "1"
-                return
-            }
-        }
-        else {
-            if ($global:SudoCredentials.UserName -ne $Credentials.UserName) {
-                $global:SudoCredentials = $Credentials
-            }
-        }
-    }
-
-    if (!$Credentials) {
-        if (!$Password) {
-            $Password = Read-Host -Prompt "Please enter the password for $UserName" -AsSecureString
-        }
-        $Credentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $UserName, $Password
-    }
-
-    if ($Credentials.UserName -notmatch "\\") {
-        Write-Error "The UserName provided to the `$Credentials object is not in the correct format! Please use a UserName with format <Domain>\<User> or <HostName>\<User>! Halting!"
-        $global:FunctionResult = "1"
-        return
-    }
-
-    $global:SudoCredentials = $Credentials
-
-    if ($StringExpression) {
-        # Find the variables in the $StringExpression string
-        $InitialRegexMatches = $($StringExpression | Select-String -Pattern "\$[\w]+:[\w]+([\W]|[^\s]|[\s]|$)|\$[\w]+([\W]|[^\s]|[\s]|$)" -AllMatches).Matches.Value
-        if ($InitialRegexMatches.Count -gt 0) {
-            $TrimmedRegexMatches = $InitialRegexMatches | % {$_.Substring(0,$_.Length-1)}
-            [array]$VariableNames = $TrimmedRegexmatches -replace "\$",""
-            # Redefine variables within this function's scope
-            foreach ($varname in $VariableNames) {
-                if ($varname -like "*script:*") {
-                    New-Variable -Name $varname -Value $(Get-Variable -Name $varname -Scope 2 -ValueOnly)
-                }
-                if ($varname -like "*local:*" -or $varname -notmatch "script:|global:") {
-                    New-Variable -Name $varname -Value $(Get-Variable -Name $varname -Scope 1 -ValueOnly)
-                }
-            }
-
-            $UpdatedVariableArray = @()
-            foreach ($varname in $VariableNames) {
-                $SuperVar = [pscustomobject]@{
-                    Name    = $varname
-                    Value   = Get-Variable -Name $varname -ValueOnly
-                }
-                
-                $UpdatedVariableArray +=, $SuperVar
-            }
-            # Update the string references to variables in the $StringExpression string if any of them are scope-special
-            for ($i=0; $i -lt $VariableNames.Count; $i++) {
-                $StringExpression = $StringExpression -replace "$($VariableNames[$i])","args[$i]"
-            }
-        }
-    }
-
-    ##### END Variable/Parameter Transforms and PreRun Prep #####
-
-    ##### BEGIN Main Body #####
-
-    if ($ExistingSudoSession.State -eq "Opened") {
-        $ElevatedPSSession = $ExistingSudoSession
-    }
-    else {
-        try {
-            $SudoSessionInfo = New-SudoSession -Credentials $Credentials -SuppressTimeWarning -ErrorAction Stop
-            if (!$SudoSessionInfo) {throw "There was a problem with the New-SudoSession function! Halting!"}
-        }
-        catch {
-            Write-Error $_
+        # If we STILL can't find choco.exe, then give up...
+        if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
+            Write-Error "Unable to find choco.exe after install! Check your `$env:Path! Halting!"
             $global:FunctionResult = "1"
             return
         }
-        
-        $ElevatedPSSession = $SudoSessionInfo.ElevatedPSSession
-    }
-
-    if ($StringExpression) {
-        if ($InitialRegexMatches.Count -gt 0) {
-            $UpdatedVariableArrayNames = foreach ($varname in $UpdatedVariableArray.Name) {
-                "`$"+"$varname"
-            }
-            [string]$FinalArgumentList = $UpdatedVariableArrayNames -join ","
-
-            # If there is only one argument to pass to the scriptblock, the special $args variable within the scriptblock BECOMES
-            # that argument, as opposed to being an array of psobjects that contains one element, i.e. the single argument object
-            # So we need to fake it out
-            if ($UpdatedVariableArray.Count -eq 1) {
-                $FinalArgumentList = "$FinalArgumentList"+","+"`"`""
-            }
-
-            # Time for the magic...
-            Invoke-Expression "Invoke-Command -Session `$ElevatedPSSession -ArgumentList $FinalArgumentList -Scriptblock {$StringExpression}"
-        }
         else {
-            Invoke-Expression "Invoke-Command -Session `$ElevatedPSSession -Scriptblock {$StringExpression}"
+            Write-Host "Finished installing Chocolatey CmdLine." -ForegroundColor Green
+
+            try {
+                cup chocolatey-core.extension -y
+            }
+            catch {
+                Write-Error "Installation of chocolatey-core.extension via the Chocolatey CmdLine failed! Halting!"
+                $global:FunctionResult = "1"
+                return
+            }
+
+            try {
+                Write-Host "Refreshing `$env:Path..."
+                $global:FunctionResult = "0"
+                $null = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
+                if ($RCEErr.Count -gt 0 -and $global:FunctionResult -eq "1") {
+                    throw "The Refresh-ChocolateyEnv function failed! Halting!"
+                }
+            }
+            catch {
+                Write-Error $_
+                Write-Host "Errors from the Refresh-ChocolateyEnv function are as follows:"
+                Write-Error $($RCEErr | Out-String)
+                $global:FunctionResult = "1"
+                return
+            }
+
+            $ChocoModulesThatRefreshEnvShouldHaveLoaded = @(
+                "chocolatey-core"
+                "chocolateyInstaller"
+                "chocolateyProfile"
+                "chocolateysetup"
+            )
+
+            foreach ($ModName in $ChocoModulesThatRefreshEnvShouldHaveLoaded) {
+                if ($(Get-Module).Name -contains $ModName) {
+                    Write-Host "The $ModName Module has been loaded from $($(Get-Module -Name $ModName).Path)" -ForegroundColor Green
+                }
+            }
         }
     }
-
-    if ($ScriptBlock) {
-        Invoke-Command -Session $ElevatedPSSession -Scriptblock $ScriptBlock
-    }
-
-
-    if (!$ExistingSudoSession) {
-        # Remove the SudoSession
-        $null = Remove-SudoSession -SessionToRemove $ElevatedPSSession
+    else {
+        Write-Warning "The Chocolatey CmdLine is already installed!"
     }
 
     ##### END Main Body #####
 }
+
+function Update-PackageManagement {
+    [CmdletBinding()]
+    Param( 
+        [Parameter(Mandatory=$False)]
+        [switch]$AddChocolateyPackageProvider,
+
+        [Parameter(Mandatory=$False)]
+        [switch]$InstallNuGetCmdLine,
+
+        [Parameter(Mandatory=$False)]
+        [switch]$LoadUpdatedModulesInSameSession
+    )
+
+    ##### BEGIN Variable/Parameter Transforms and PreRun Prep #####
+
+    # We're going to need Elevated privileges for some commands below, so might as well try to set this up now.
+    if (!$(GetElevation)) {
+        Write-Error "The Update-PackageManagement function must be run with elevated privileges. Halting!"
+        $global:FunctionResult = "1"
+        return
+    }
+
+    if (!$([Environment]::Is64BitProcess)) {
+        Write-Error "You are currently running the 32-bit version of PowerShell. Please run the 64-bit version found under C:\Windows\SysWOW64\WindowsPowerShell\v1.0 and try again. Halting!"
+        $global:FunctionResult = "1"
+        return
+    }
+
+    if ($PSVersionTable.PSEdition -eq "Core" -and $PSVersionTable.Platform -ne "Win32NT" -and $AddChocolateyPackageProvider) {
+        Write-Error "The Chocolatey Repo should only be added on a Windows OS! Halting!"
+        $global:FunctionResult = "1"
+        return
+    }
+
+    if ($InstallNuGetCmdLine -and !$AddChocolateyPackageProvider) {
+        if ($PSVersionTable.PSEdition -eq "Desktop" -or $PSVersionTable.PSVersion.Major -le 5) {
+            if ($(Get-PackageProvider).Name -notcontains "Chocolatey") {
+                $WarningMessage = "NuGet Command Line Tool cannot be installed without using Chocolatey. Would you like to use the Chocolatey Package Provider (NOTE: This is NOT an installation of the chocolatey command line)?"
+                $WarningResponse = Pause-ForWarning -PauseTimeInSeconds 15 -Message $WarningMessage
+                if ($WarningResponse) {
+                    $AddChocolateyPackageProvider = $true
+                }
+            }
+            else {
+                $AddChocolateyPackageProvider = $true
+            }
+        }
+        elseif ($PSVersionTable.PSEdition -eq "Core" -and $PSVersionTable.Platform -eq "Win32NT") {
+            if (!$(Get-Command choco -ErrorAction SilentlyContinue)) {
+                $WarningMessage = "NuGet Command Line Tool cannot be installed without using Chocolatey. Would you like to install Chocolatey Command Line Tools in order to install NuGet Command Line Tools?"
+                $WarningResponse = Pause-ForWarning -PauseTimeInSeconds 15 -Message $WarningMessage
+                if ($WarningResponse) {
+                    $AddChocolateyPackageProvider = $true
+                }
+            }
+            else {
+                $AddChocolateyPackageProvider = $true
+            }
+        }
+        elseif ($PSVersionTable.PSEdition -eq "Core" -and $PSVersionTable.Platform -eq "Unix") {
+            $WarningMessage = "The NuGet Command Line Tools binary nuget.exe can be downloaded, but will not be able to be run without Mono. Do you want to download the latest stable nuget.exe?"
+            $WarningResponse = Pause-ForWarning -PauseTimeInSeconds 15 -Message $WarningMessage
+            if ($WarningResponse) {
+                Write-Host "Downloading latest stable nuget.exe..."
+                $OutFilePath = Get-NativePath -PathAsStringArray @($HOME, "Downloads", "nuget.exe")
+                Invoke-WebRequest -Uri "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" -OutFile $OutFilePath
+            }
+            $AddChocolateyPackageProvider = $false
+        }
+    }
+
+    if ($PSVersionTable.PSEdition -eq "Desktop" -or $PSVersionTable.PSVersion.Major -le 5) {
+        # Check to see if we're behind a proxy
+        if ([System.Net.WebProxy]::GetDefaultProxy().Address -ne $null) {
+            $ProxyAddress = [System.Net.WebProxy]::GetDefaultProxy().Address
+            [system.net.webrequest]::defaultwebproxy = New-Object system.net.webproxy($ProxyAddress)
+            [system.net.webrequest]::defaultwebproxy.credentials = [System.Net.CredentialCache]::DefaultNetworkCredentials
+            [system.net.webrequest]::defaultwebproxy.BypassProxyOnLocal = $true
+        }
+    }
+    # TODO: Figure out how to identify default proxy on PowerShell Core...
+
+    ##### END Variable/Parameter Transforms and PreRun Prep #####
+
+
+    if ($PSVersionTable.PSVersion.Major -lt 5) {
+        if ($(Get-Module -ListAvailable).Name -notcontains "PackageManagement") {
+            Write-Host "Downloading PackageManagement .msi installer..."
+            $OutFilePath = Get-NativePath -PathAsStringArray @($HOME, "Downloads", "PackageManagement_x64.msi")
+            Invoke-WebRequest -Uri "https://download.microsoft.com/download/C/4/1/C41378D4-7F41-4BBE-9D0D-0E4F98585C61/PackageManagement_x64.msi" -OutFile $OutFilePath
+            
+            $DateStamp = Get-Date -Format yyyyMMddTHHmmss
+            $MSIFullPath = $OutFilePath
+            $MSIParentDir = $MSIFullPath | Split-Path -Parent
+            $MSIFileName = $MSIFullPath | Split-Path -Leaf
+            $MSIFileNameOnly = $MSIFileName -replace "\.msi",""
+            $logFile = Get-NativePath -PathAsStringArray @($MSIParentDir, "$MSIFileNameOnly$DateStamp.log")
+            $MSIArguments = @(
+                "/i"
+                $MSIFullPath
+                "/qn"
+                "/norestart"
+                "/L*v"
+                $logFile
+            )
+            Start-Process "msiexec.exe" -ArgumentList $MSIArguments -Wait -NoNewWindow
+        }
+        while ($($(Get-Module -ListAvailable).Name -notcontains "PackageManagement") -and $($(Get-Module -ListAvailable).Name -notcontains "PowerShellGet")) {
+            Write-Host "Waiting for PackageManagement and PowerShellGet Modules to become available"
+            Start-Sleep -Seconds 1
+        }
+        Write-Host "PackageManagement and PowerShellGet Modules are ready. Continuing..."
+    }
+
+    # We need to load whatever versions of PackageManagement/PowerShellGet are available on the Local Host in order
+    # to use the Find-Module cmdlet to find out what the latest versions of each Module are...
+
+    # ...but because there are sometimes issues with version compatibility between PackageManagement/PowerShellGet,
+    # after loading the latest PackageManagement Module we need to try/catch available versions of PowerShellGet until
+    # one of them actually loads
+    
+    # Set LatestLocallyAvailable variables...
+    $PackageManagementLatestLocallyAvailableVersionItem = $(Get-Module -ListAvailable -All | Where-Object {$_.Name -eq "PackageManagement"} | Sort-Object -Property Version)[-1]
+    $PowerShellGetLatestLocallyAvailableVersionItem = $(Get-Module -ListAvailable -All | Where-Object {$_.Name -eq "PowerShellGet"} | Sort-Object -Property Version)[-1]
+    $PackageManagementLatestLocallyAvailableVersion = $PackageManagementLatestLocallyAvailableVersionItem.Version
+    $PowerShellGetLatestLocallyAvailableVersion = $PowerShellGetLatestLocallyAvailableVersionItem.Version
+    $PSGetLocallyAvailableVersions = $(Get-Module -ListAvailable -All | Where-Object {$_.Name -eq "PowerShellGet"}).Version | Sort-Object -Property Version | Get-Unique
+    $PSGetLocallyAvailableVersions = $PSGetLocallyAvailableVersions | Sort-Object -Descending
+    
+
+    if ($(Get-Module).Name -notcontains "PackageManagement") {
+        if ($PSVersionTable.PSVersion.Major -ge 5) {
+            Import-Module "PackageManagement" -RequiredVersion $PackageManagementLatestLocallyAvailableVersion
+        }
+        else {
+            Import-Module "PackageManagement"
+        }
+    }
+    if ($(Get-Module).Name -notcontains "PowerShellGet") {
+        foreach ($version in $PSGetLocallyAvailableVersions) {
+            try {
+                $ImportedPSGetModule = Import-Module "PowerShellGet" -RequiredVersion $version -PassThru -ErrorAction SilentlyContinue
+                if (!$ImportedPSGetModule) {throw}
+
+                break
+            }
+            catch {
+                continue
+            }
+        }
+    }
+
+    if ($(Get-Module -Name PackageManagement).ExportedCommands.Count -eq 0 -or
+        $(Get-Module -Name PowerShellGet).ExportedCommands.Count -eq 0
+    ) {
+        Write-Warning "Either PowerShellGet or PackagementManagement Modules were not able to be loaded Imported successfully due to an update initiated within the current session. Please close this PowerShell Session, open a new one, and run this function again."
+
+        $Result = [pscustomobject][ordered]@{
+            PackageManagementUpdated  = $false
+            PowerShellGetUpdated      = $false
+            NewPSSessionRequired      = $true
+        }
+
+        $Result
+        return
+    }
+
+    # Determine if the NuGet Package Provider is available. If not, install it, because it needs it for some reason
+    # that is currently not clear to me. Point is, if it's not installed it will prompt you to install it, so just
+    # do it beforehand.
+    if ($(Get-PackageProvider).Name -notcontains "NuGet") {
+        Install-PackageProvider "NuGet" -Scope CurrentUser -Force
+        Register-PackageSource -Name 'nuget.org' -Location 'https://api.nuget.org/v3/index.json' -ProviderName NuGet -Trusted -Force -ForceBootstrap
+    }
+
+    if ($AddChocolateyPackageProvider) {
+        if ($PSVersionTable.PSEdition -eq "Desktop" -or $PSVersionTable.PSVersion.Major -le 5) {
+            # Install the Chocolatey Package Provider to be used with PowerShellGet
+            if ($(Get-PackageProvider).Name -notcontains "Chocolatey") {
+                Install-PackageProvider "Chocolatey" -Scope CurrentUser -Force
+                # The above Install-PackageProvider "Chocolatey" -Force DOES register a PackageSource Repository, so we need to trust it:
+                Set-PackageSource -Name Chocolatey -Trusted
+
+                # Make sure packages installed via Chocolatey PackageProvider are part of $env:Path
+                [System.Collections.ArrayList]$ChocolateyPathsPrep = @()
+                [System.Collections.ArrayList]$ChocolateyPathsFinal = @()
+                $env:ChocolateyPSProviderPath = "C:\Chocolatey"
+
+                if (Test-Path $env:ChocolateyPSProviderPath) {
+                    if (Test-Path "$env:ChocolateyPSProviderPath\lib") {
+                        $OtherChocolateyPathsToAdd = $(Get-ChildItem "$env:ChocolateyPSProviderPath\lib" -Directory | foreach {
+                            Get-ChildItem $_.FullName -Recurse -File
+                        } | foreach {
+                            if ($_.Extension -eq ".exe") {
+                                $_.Directory.FullName
+                            }
+                        }) | foreach {
+                            $null = $ChocolateyPathsPrep.Add($_)
+                        }
+                    }
+                    if (Test-Path "$env:ChocolateyPSProviderPath\bin") {
+                        $OtherChocolateyPathsToAdd = $(Get-ChildItem "$env:ChocolateyPSProviderPath\bin" -Directory | foreach {
+                            Get-ChildItem $_.FullName -Recurse -File
+                        } | foreach {
+                            if ($_.Extension -eq ".exe") {
+                                $_.Directory.FullName
+                            }
+                        }) | foreach {
+                            $null = $ChocolateyPathsPrep.Add($_)
+                        }
+                    }
+                }
+                
+                if ($ChocolateyPathsPrep) {
+                    foreach ($ChocoPath in $ChocolateyPathsPrep) {
+                        if ($(Test-Path $ChocoPath) -and $OriginalEnvPathArray -notcontains $ChocoPath) {
+                            $null = $ChocolateyPathsFinal.Add($ChocoPath)
+                        }
+                    }
+                }
+            
+                try {
+                    $ChocolateyPathsFinal = $ChocolateyPathsFinal | Sort-Object | Get-Unique
+                }
+                catch {
+                    [System.Collections.ArrayList]$ChocolateyPathsFinal = @($ChocolateyPathsFinal)
+                }
+                if ($ChocolateyPathsFinal.Count -ne 0) {
+                    $ChocolateyPathsAsString = $ChocolateyPathsFinal -join ";"
+                }
+
+                foreach ($ChocPath in $ChocolateyPathsFinal) {
+                    if ($($env:Path -split ";") -notcontains $ChocPath) {
+                        if ($env:Path[-1] -eq ";") {
+                            $env:Path = "$env:Path$ChocPath"
+                        }
+                        else {
+                            $env:Path = "$env:Path;$ChocPath"
+                        }
+                    }
+                }
+
+                if ($InstallNuGetCmdLine) {
+                    # Next, install the NuGet CLI using the Chocolatey Repo
+                    try {
+                        Write-Host "Trying to find Chocolatey Package Nuget.CommandLine..."
+                        while (!$(Find-Package Nuget.CommandLine)) {
+                            Write-Host "Trying to find Chocolatey Package Nuget.CommandLine..."
+                            Start-Sleep -Seconds 2
+                        }
+                        
+                        Get-Package NuGet.CommandLine -ErrorAction SilentlyContinue
+                        if (!$?) {
+                            throw
+                        }
+                    } 
+                    catch {
+                        Install-Package Nuget.CommandLine -Source chocolatey -Force
+                    }
+                    
+                    # Ensure there's a symlink from C:\Chocolatey\bin to the real NuGet.exe under C:\Chocolatey\lib
+                    $NuGetSymlinkTest = Get-ChildItem "C:\Chocolatey\bin" | Where-Object {$_.Name -eq "NuGet.exe" -and $_.LinkType -eq "SymbolicLink"}
+                    $RealNuGetPath = $(Resolve-Path "C:\Chocolatey\lib\*\*\NuGet.exe").Path
+                    $TestRealNuGetPath = Test-Path $RealNuGetPath
+                    if (!$NuGetSymlinkTest -and $TestRealNuGetPath) {
+                        New-Item -Path "C:\Chocolatey\bin\NuGet.exe" -ItemType SymbolicLink -Value $RealNuGetPath
+                    }
+                }
+            }
+        }
+        if ($PSVersionTable.PSEdition -eq "Core" -and $PSVersionTable.Platform -eq "Win32NT") {
+            # Install the Chocolatey Command line
+            if (!$(Get-Command choco -ErrorAction SilentlyContinue)) {
+                # Suppressing all errors for Chocolatey cmdline install. They will only be a problem if
+                # there is a Web Proxy between you and the Internet
+                $env:chocolateyUseWindowsCompression = 'true'
+                $null = Invoke-Expression $([System.Net.WebClient]::new()).DownloadString("https://chocolatey.org/install.ps1") -ErrorVariable ChocolateyInstallProblems 2>&1 6>&1
+                $DateStamp = Get-Date -Format yyyyMMddTHHmmss
+                $ChocolateyInstallLogFile = Get-NativePath -PathAsStringArray @($(Get-Location).Path, "ChocolateyInstallLog_$DateStamp.txt")
+                $ChocolateyInstallProblems | Out-File $ChocolateyInstallLogFile
+            }
+
+            if ($InstallNuGetCmdLine) {
+                if (!$(Get-Command choco -ErrorAction SilentlyContinue)) {
+                    Write-Error "Unable to find chocolatey.exe, however, it should be installed. Please check your System PATH and `$env:Path and try again. Halting!"
+                    $global:FunctionResult = "1"
+                    return
+                }
+                else {
+                    # 'choco update' aka 'cup' will update if already installed or install if not installed
+                    $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
+                    $ProcessInfo.WorkingDirectory = $NuGetPackagesPath
+                    $ProcessInfo.FileName = "cup"
+                    $ProcessInfo.RedirectStandardError = $true
+                    $ProcessInfo.RedirectStandardOutput = $true
+                    $ProcessInfo.UseShellExecute = $false
+                    $ProcessInfo.Arguments = "nuget.commandline -y"
+                    $Process = New-Object System.Diagnostics.Process
+                    $Process.StartInfo = $ProcessInfo
+                    $Process.Start() | Out-Null
+                    $stdout = $($Process.StandardOutput.ReadToEnd()).Trim()
+                    $stderr = $($Process.StandardError.ReadToEnd()).Trim()
+                    $AllOutput = $stdout + $stderr
+                    $AllOutput = $AllOutput -split "`n"
+                }
+                # NOTE: The chocolatey install should take care of setting $env:Path and System PATH so that
+                # choco binaries and packages installed via chocolatey can be found here:
+                # C:\ProgramData\chocolatey\bin
+            }
+        }
+    }
+    # Next, set the PSGallery PowerShellGet PackageProvider Source to Trusted
+    if ($(Get-PackageSource | Where-Object {$_.Name -eq "PSGallery"}).IsTrusted -eq $False) {
+        Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+    }
+
+    # Next, update PackageManagement and PowerShellGet where possible
+    [version]$MinimumVer = "1.0.0.1"
+    try {
+        $PackageManagementLatestVersion = $(Find-Module PackageManagement).Version
+    }
+    catch {
+        $PackageManagementLatestVersion = $PackageManagementLatestLocallyAvailableVersion
+    }
+    try {
+        $PowerShellGetLatestVersion = $(Find-Module PowerShellGet).Version
+    }
+    catch {
+        $PowerShellGetLatestVersion = $PowerShellGetLatestLocallyAvailableVersion
+    }
+    Write-Verbose "PackageManagement Latest Version is: $PackageManagementLatestVersion"
+    Write-Verbose "PowerShellGetLatestVersion Latest Version is: $PowerShellGetLatestVersion"
+
+    if ($PackageManagementLatestVersion -gt $PackageManagementLatestLocallyAvailableVersion -and $PackageManagementLatestVersion -gt $MinimumVer) {
+        if ($PSVersionTable.PSVersion.Major -lt 5) {
+            Write-Host "`nUnable to update the PackageManagement Module beyond $($MinimumVer.ToString()) on PowerShell versions lower than 5."
+        }
+        if ($PSVersionTable.PSVersion.Major -ge 5) {
+            #Install-Module -Name "PackageManagement" -Scope CurrentUser -Repository PSGallery -RequiredVersion $PowerShellGetLatestVersion -Force -WarningAction "SilentlyContinue"
+            #Install-Module -Name "PackageManagement" -Scope CurrentUser -Repository PSGallery -RequiredVersion $PackageManagementLatestVersion -Force
+            Write-Host "Installing latest version of PackageManagement..."
+            Install-Module -Name "PackageManagement" -Force -WarningAction SilentlyContinue
+            $PackageManagementUpdated = $True
+        }
+    }
+    if ($PowerShellGetLatestVersion -gt $PowerShellGetLatestLocallyAvailableVersion -and $PowerShellGetLatestVersion -gt $MinimumVer) {
+        # Unless the force parameter is used, Install-Module will halt with a warning saying the 1.0.0.1 is already installed
+        # and it will not update it.
+        Write-Host "Installing latest version of PowerShellGet..."
+        #Install-Module -Name "PowerShellGet" -Scope CurrentUser -Repository PSGallery -RequiredVersion $PowerShellGetLatestVersion -Force -WarningAction "SilentlyContinue"
+        #Install-Module -Name "PowerShellGet" -RequiredVersion $PowerShellGetLatestVersion -Force
+        Install-Module -Name "PowerShellGet" -Force -WarningAction SilentlyContinue
+        $PowerShellGetUpdated = $True
+    }
+
+    # Reset the LatestLocallyAvailable variables, and then load them into the current session
+    $PackageManagementLatestLocallyAvailableVersionItem = $(Get-Module -ListAvailable -All | Where-Object {$_.Name -eq "PackageManagement"} | Sort-Object -Property Version)[-1]
+    $PowerShellGetLatestLocallyAvailableVersionItem = $(Get-Module -ListAvailable -All | Where-Object {$_.Name -eq "PowerShellGet"} | Sort-Object -Property Version)[-1]
+    $PackageManagementLatestLocallyAvailableVersion = $PackageManagementLatestLocallyAvailableVersionItem.Version
+    $PowerShellGetLatestLocallyAvailableVersion = $PowerShellGetLatestLocallyAvailableVersionItem.Version
+    Write-Verbose "Latest locally available PackageManagement version is $PackageManagementLatestLocallyAvailableVersion"
+    Write-Verbose "Latest locally available PowerShellGet version is $PowerShellGetLatestLocallyAvailableVersion"
+
+    $CurrentlyLoadedPackageManagementVersion = $(Get-Module | Where-Object {$_.Name -eq 'PackageManagement'}).Version
+    $CurrentlyLoadedPowerShellGetVersion = $(Get-Module | Where-Object {$_.Name -eq 'PowerShellGet'}).Version
+    Write-Verbose "Currently loaded PackageManagement version is $CurrentlyLoadedPackageManagementVersion"
+    Write-Verbose "Currently loaded PowerShellGet version is $CurrentlyLoadedPowerShellGetVersion"
+
+    if ($PackageManagementUpdated -eq $True -or $PowerShellGetUpdated -eq $True) {
+        $NewPSSessionRequired = $True
+        if ($LoadUpdatedModulesInSameSession) {
+            if ($PowerShellGetUpdated -eq $True) {
+                $PSGetWarningMsg = "Loading the latest installed version of PowerShellGet " +
+                "(i.e. PowerShellGet $($PowerShellGetLatestLocallyAvailableVersion.ToString()) " +
+                "in the current PowerShell session will break some PowerShellGet Cmdlets!"
+                Write-Warning $PSGetWarningMsg
+            }
+            if ($PackageManagementUpdated -eq $True) {
+                $PMWarningMsg = "Loading the latest installed version of PackageManagement " +
+                "(i.e. PackageManagement $($PackageManagementLatestLocallyAvailableVersion.ToString()) " +
+                "in the current PowerShell session will break some PackageManagement Cmdlets!"
+                Write-Warning $PMWarningMsg
+            }
+        }
+    }
+
+    if ($LoadUpdatedModulesInSameSession) {
+        if ($CurrentlyLoadedPackageManagementVersion -lt $PackageManagementLatestLocallyAvailableVersion) {
+            # Need to remove PowerShellGet first since it depends on PackageManagement
+            Write-Host "Removing Module PowerShellGet $CurrentlyLoadedPowerShellGetVersion ..."
+            Remove-Module -Name "PowerShellGet"
+            Write-Host "Removing Module PackageManagement $CurrentlyLoadedPackageManagementVersion ..."
+            Remove-Module -Name "PackageManagement"
+        
+            if ($(Get-Host).Name -ne "Package Manager Host") {
+                Write-Verbose "We are NOT in the Visual Studio Package Management Console. Continuing..."
+                
+                # Need to Import PackageManagement first since it's a dependency for PowerShellGet
+                # Need to use -RequiredVersion parameter because older versions are still intalled side-by-side with new
+                Write-Host "Importing PackageManagement Version $PackageManagementLatestLocallyAvailableVersion ..."
+                $null = Import-Module "PackageManagement" -RequiredVersion $PackageManagementLatestLocallyAvailableVersion -ErrorVariable ImportPackManProblems 2>&1 6>&1
+                Write-Host "Importing PowerShellGet Version $PowerShellGetLatestLocallyAvailableVersion ..."
+                $null = Import-Module "PowerShellGet" -RequiredVersion $PowerShellGetLatestLocallyAvailableVersion -ErrorVariable ImportPSGetProblems 2>&1 6>&1
+            }
+            if ($(Get-Host).Name -eq "Package Manager Host") {
+                Write-Verbose "We ARE in the Visual Studio Package Management Console. Continuing..."
+        
+                # Need to Import PackageManagement first since it's a dependency for PowerShellGet
+                # Need to use -RequiredVersion parameter because older versions are still intalled side-by-side with new
+                Write-Host "Importing PackageManagement Version $PackageManagementLatestLocallyAvailableVersion`nNOTE: Module Members will have with Prefix 'PackMan' - Example: Get-PackManPackage"
+                $null = Import-Module "PackageManagement" -RequiredVersion $PackageManagementLatestLocallyAvailableVersion -Prefix PackMan -ErrorVariable ImportPackManProblems 2>&1 6>&1
+                Write-Host "Importing PowerShellGet Version $PowerShellGetLatestLocallyAvailableVersion`nNOTE: Module Members will have with Prefix 'PSGet' - Example: Find-PSGetModule"
+                $null = Import-Module "PowerShellGet" -RequiredVersion $PowerShellGetLatestLocallyAvailableVersion -Prefix PSGet -ErrorVariable ImportPSGetProblems 2>&1 6>&1
+            }
+        }
+        
+        # Reset CurrentlyLoaded Variables
+        $CurrentlyLoadedPackageManagementVersion = $(Get-Module | Where-Object {$_.Name -eq 'PackageManagement'}).Version
+        $CurrentlyLoadedPowerShellGetVersion = $(Get-Module | Where-Object {$_.Name -eq 'PowerShellGet'}).Version
+        Write-Verbose "Currently loaded PackageManagement version is $CurrentlyLoadedPackageManagementVersion"
+        Write-Verbose "Currently loaded PowerShellGet version is $CurrentlyLoadedPowerShellGetVersion"
+        
+        if ($CurrentlyLoadedPowerShellGetVersion -lt $PowerShellGetLatestLocallyAvailableVersion) {
+            if (!$ImportPSGetProblems) {
+                Write-Host "Removing Module PowerShellGet $CurrentlyLoadedPowerShellGetVersion ..."
+            }
+            Remove-Module -Name "PowerShellGet"
+        
+            if ($(Get-Host).Name -ne "Package Manager Host") {
+                Write-Verbose "We are NOT in the Visual Studio Package Management Console. Continuing..."
+                
+                # Need to use -RequiredVersion parameter because older versions are still intalled side-by-side with new
+                Write-Host "Importing PowerShellGet Version $PowerShellGetLatestLocallyAvailableVersion ..."
+                Import-Module "PowerShellGet" -RequiredVersion $PowerShellGetLatestLocallyAvailableVersion
+            }
+            if ($(Get-Host).Name -eq "Package Manager Host") {
+                Write-Host "We ARE in the Visual Studio Package Management Console. Continuing..."
+        
+                # Need to use -RequiredVersion parameter because older versions are still intalled side-by-side with new
+                Write-Host "Importing PowerShellGet Version $PowerShellGetLatestLocallyAvailableVersion`nNOTE: Module Members will have with Prefix 'PSGet' - Example: Find-PSGetModule"
+                Import-Module "PowerShellGet" -RequiredVersion $PowerShellGetLatestLocallyAvailableVersion -Prefix PSGet
+            }
+        }
+
+        # Make sure all Repos Are Trusted
+        if ($AddChocolateyPackageProvider -and $($PSVersionTable.PSEdition -eq "Desktop" -or $PSVersionTable.PSVersion.Major -le 5)) {
+            $BaselineRepoNames = @("Chocolatey","nuget.org","PSGallery")
+        }
+        else {
+            $BaselineRepoNames = @("nuget.org","PSGallery")
+        }
+        if ($(Get-Module -Name PackageManagement).ExportedCommands.Count -gt 0) {
+            $RepoObjectsForTrustCheck = Get-PackageSource | Where-Object {$_.Name -match "$($BaselineRepoNames -join "|")"}
+        
+            foreach ($RepoObject in $RepoObjectsForTrustCheck) {
+                if ($RepoObject.IsTrusted -ne $true) {
+                    Set-PackageSource -Name $RepoObject.Name -Trusted
+                }
+            }
+        }
+
+        # Reset CurrentlyLoaded Variables
+        $CurrentlyLoadedPackageManagementVersion = $(Get-Module | Where-Object {$_.Name -eq 'PackageManagement'}).Version
+        $CurrentlyLoadedPowerShellGetVersion = $(Get-Module | Where-Object {$_.Name -eq 'PowerShellGet'}).Version
+        Write-Verbose "The FINAL loaded PackageManagement version is $CurrentlyLoadedPackageManagementVersion"
+        Write-Verbose "The FINAL loaded PowerShellGet version is $CurrentlyLoadedPowerShellGetVersion"
+
+        #$ErrorsArrayReversed = $($Error.Count-1)..$($Error.Count-4) | foreach {$Error[$_]}
+        #$CheckForError = try {$ErrorsArrayReversed[0].ToString()} catch {$null}
+        if ($($ImportPackManProblems | Out-String) -match "Assembly with same name is already loaded" -or 
+            $CurrentlyLoadedPackageManagementVersion -lt $PackageManagementLatestVersion -or
+            $(Get-Module -Name PackageManagement).ExportedCommands.Count -eq 0
+        ) {
+            Write-Warning "The PackageManagement Module has been updated and requires and brand new PowerShell Session. Please close this session, start a new one, and run the function again."
+            $NewPSSessionRequired = $true
+        }
+    }
+
+    $Result = [pscustomobject][ordered]@{
+        PackageManagementUpdated                     = if ($PackageManagementUpdated) {$true} else {$false}
+        PowerShellGetUpdated                         = if ($PowerShellGetUpdated) {$true} else {$false}
+        NewPSSessionRequired                         = if ($NewPSSessionRequired) {$true} else {$false}
+        PackageManagementCurrentlyLoaded             = Get-Module -Name PackageManagement
+        PowerShellGetCurrentlyLoaded                 = Get-Module -Name PowerShellGet
+        PackageManagementLatesLocallyAvailable       = $PackageManagementLatestLocallyAvailableVersionItem
+        PowerShellGetLatestLocallyAvailable          = $PowerShellGetLatestLocallyAvailableVersionItem
+    }
+
+    $Result
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUok0+TGemozDVB4mza5HwMTBr
-# Wcygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU5jGYTbg6OFy+MgNGHtmU4Tmj
+# lPSgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -1458,11 +2388,11 @@ function Start-SudoSession {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFNRSHBLGyU3rR22u
-# 7q2k1o2lfZGaMA0GCSqGSIb3DQEBAQUABIIBALK/cXDuq5FVm02uLXrmTcYwD3m7
-# xYaOJAL+61B5FPhbiqB4EE4esaT+5umVXz+RONL4u3rCR23jjToEzrttmoftx/jc
-# GrhN+1Fqe6FqxtOWGaIjIMqCLJ2Oce6UEorN7btxAvgtnxkrbercDFxed+nPNzD3
-# 08QAoESaHIeBqsVzh6Pqoa20Jm0QdFLfvqciAMXfH4Fe+GBS9Kx96eAWLnEeOa/i
-# t+qcGHmdc4EQgpA0hW3zI8kWn2Su+dDkpcYrJ4uEkUuX52lkg+m8Lpj54rWAU83r
-# PdO5CgqUmS/kgAVkH/7f996liBDZXE1TR82lleDzVukzKkGmto/MXk1l0VM=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFDd/dFp5hO9oBJam
+# C7TH8Mf9Jaq3MA0GCSqGSIb3DQEBAQUABIIBAK9eXxb2uiSY5ghpXHB10PZgQ551
+# +3U/Q9KivI88E/HZavHaMXLtLHkcwB7p8nB4BiVw0XWsk4WtdruvJfiVO/Gt58hb
+# 7YwlQ+U582a8YcW/xszDolFtvFobeyd5Dsda8knMxMlLWoWugSsI35L17R/NK3aO
+# zu3dxtpMyc3+VOl2gVocx5KPWbh976YJun01lOCiq6GTaxe4gO8l5I45HwcVciLU
+# iqbAZfyeHPM3GFtet4fJG8td5GUqdBgjrxK0PscwoIH2CWBD3Bm760PYzzqlt1PH
+# jLmG5p0aUPfWcXp5py+LgY+MjZpk92uA0OEZUESQNB56RwdzHlbn1f1sZrU=
 # SIG # End signature block
