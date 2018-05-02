@@ -32,13 +32,11 @@ Param (
 ##### BEGIN Prepare For Build #####
 
 $ElevationCheck = [System.Security.Principal.WindowsPrincipal]::new([System.Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
-<#
-if ($ElevationCheck) {
-    Write-Error "It should not be necessary to run the build script from an elevated PowerShell prompt. Halting!"
+if (!$ElevationCheck) {
+    Write-Error "You must run the build.ps1 as an Administrator (i.e. elevated PowerShell Session)! Halting!"
     $global:FunctionResult = "1"
     return
 }
-#>
 
 if ($AdminUserCreds) {
     # Make sure $AdminUserCreds.UserName format is <Domain>\<User> and <LocalHostName>\<User>
@@ -236,367 +234,21 @@ if ($Cert) {
     }
 }
 
-$TestResources = @{}
-[System.Collections.ArrayList]$ArrayOfInstallProgramSplatParams = @()
-
-##### BEGIN Tasks Unique to this Module's Build #####
-
-function New-UniqueString {
-    [CmdletBinding()]
-    Param(
-        [Parameter(Mandatory=$False)]
-        [string[]]$ArrayOfStrings,
-
-        [Parameter(Mandatory=$True)]
-        [string]$PossibleNewUniqueString
-    )
-
-    if (!$ArrayOfStrings -or $ArrayOfStrings.Count -eq 0 -or ![bool]$($ArrayOfStrings -match "[\w]")) {
-        $PossibleNewUniqueString
-    }
-    else {
-        $OriginalString = $PossibleNewUniqueString
-        $Iteration = 1
-        while ($ArrayOfStrings -contains $PossibleNewUniqueString) {
-            $AppendedValue = "_$Iteration"
-            $PossibleNewUniqueString = $OriginalString + $AppendedValue
-            $Iteration++
-        }
-
-        $PossibleNewUniqueString
-    }
-}
-
-$SimpleUserName = New-UniqueString -ArrayOfStrings $(Get-ChildItem "C:\Users" -Directory).Name -PossibleNewUniqueString "testuser"
-$UserName = "$env:ComputerName\$SimpleUserName"
-$Password = ConvertTo-SecureString "Unsecure321!pwd" -AsPlainText -Force
-$Creds = New-Object System.Management.Automation.PSCredential ($UserName, $Password)
-
-$TestResources.Add("UserName",$UserName)
-$TestResources.Add("SimpleUsername",$SimpleUserName)
-$TestResources.Add("Password",$Password)
-$TestResources.Add("Creds",$Creds)
-
-# Specify which Programs we need to install for this build test
-$null = $ArrayOfInstallProgramSplatParams.Add(@{ProgramName = 'git'; CommandName = 'git'})
-
-Get-PSSession | Remove-PSSession
-
-$ConsentBehaviorAdminValue = $(Get-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin").ConsentPromptBehaviorAdmin
-$ConsentPromptBehaviorUserValue = $(Get-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorUser").ConsentPromptBehaviorUser
-$EnableLUAValue = $(Get-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA").EnableLUA
-$PromptOnSecureDesktopValue = $(Get-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "PromptOnSecureDesktop").PromptOnSecureDesktop
-if ($ConsentBehaviorAdminValue -ne 0 -or $ConsentPromptBehaviorUserValue -ne 0 -or $PromptOnSecureDesktopValue -ne 0) {
-    $UACEnabled = $True
-}
-
-# BEGIN Build Tasks that we need to Run As Admin #
-if ($(Get-LocalUser).Name -notcontains $SimpleUserName -or
-$(Get-LocalGroupMember -Group "Administrators").Name -notcontains $UserName -or
-$(Get-LocalGroupMember -Group "Remote Management Users").Name -notcontains $UserName -or
-$UACEnabled
-) {
-    Import-Module $(Resolve-Path "$PSScriptRoot\*Help*\UserRights.psm1").Path -WarningAction SilentlyContinue
-    if (![bool]$(Get-Module -Name "UserRights")) {
-        Write-Error "Problem importing the UserRights Module from $($(Resolve-Path "$PSScriptRoot\*Help*\UserRights.psm1").Path)! Halting!"
-        $global:FunctionResult = "1"
-        return
-    }
-
-    if (!$AdminUserCreds -and !$ElevationCheck -and !$AppVeyorContext) {
-        $CurrentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-        $AdminUserCreds = [pscredential]::new($CurrentUser,$(Read-Host -Prompt "Please enter the password for '$CurrentUser'" -AsSecureString))
-    }
-    if ($AdminUserCreds) {
-        $UserIsAdmin = Get-UserAdminRights -UserAcct $AdminUserCreds.UserName
-    }
-
-    if ($UserIsAdmin -or $ElevationCheck -or $AppVeyorContext) {
-        if (!$AppVeyorContext -and !$ElevationCheck) {
-            Import-Module $(Resolve-Path "$PSScriptRoot\*Help*\SudoTasks.psm1").Path
-            if (![bool]$(Get-Module -Name "SudoTasks")) {
-                Write-Error "Problem importing the SudoTasks Module from $($(Resolve-Path "$PSScriptRoot\*Help*\SudoTasks.psm1").Path)! Halting!"
-                $global:FunctionResult = "1"
-                return
-            }
-        }
-
-        $DisableUACSB = {
-            $OriginalConsentBehaviorAdminValue = $(Get-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin").ConsentPromptBehaviorAdmin
-            $OriginalConsentPromptBehaviorUser = $(Get-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorUser").ConsentPromptBehaviorUser
-            $OriginalEnableLUA = $(Get-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA").EnableLUA
-            $OriginalPromptOnSecureDesktop = $(Get-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "PromptOnSecureDesktop").PromptOnSecureDesktop
-            $OriginalUACValues = @(
-                [pscustomobject]@{
-                    PropertyName    = "ConsentPromptBehaviorAdmin"
-                    PropertyValue   = $OriginalConsentBehaviorAdminValue
-                }
-                [pscustomobject]@{
-                    PropertyName    = "ConsentPromptBehaviorUser"
-                    PropertyValue   = $OriginalConsentPromptBehaviorUser
-                }
-                [pscustomobject]@{
-                    PropertyName    = "EnableLUA"
-                    PropertyValue   = $OriginalEnableLUA
-                }
-                [pscustomobject]@{
-                    PropertyName    = "PromptOnSecureDesktop"
-                    PropertyValue   = $OriginalPromptOnSecureDesktop
-                }
-            )
-
-            # Disable UAC because we don't want a UAC prompt for every single test
-            Set-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin" -Value "0"
-            Set-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorUser" -Value "0"
-            Set-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA" -Value "1"
-            Set-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "PromptOnSecureDesktop" -Value "0"
-
-            $OriginalUACValues
-        }
-
-        $TestAccountCreationSB = {
-            param(
-                [string]$UserName,
-                [string]$SimpleUserName,
-                [securestring]$Password
-            )
-
-            # Create Temp Local User
-            if ($(Get-LocalUser).Name -notcontains $SimpleUserName) {
-                New-LocalUser $SimpleUserName -Password $Password -FullName $SimpleUserName
-            }
-
-            if ($(Get-LocalGroupMember -Group "Administrators").Name -notcontains $UserName) {
-                Add-LocalGroupMember -Group "Administrators" -Member $SimpleUserName
-            }
-
-            if ($(Get-LocalGroupMember -Group "Remote Management Users").Name -notcontains $UserName) {
-                Add-LocalGroupMember -Group "Remote Management Users" -Member $SimpleUserName
-            }
-            
-            Get-LocalGroupMember -Group Administrators | Where-Object {$_.Name -eq $UserName}
-        }
-
-        if (!$SudoSessionInfo -and !$ElevationCheck -and !$AppVeyorContext) {
-            try {
-                $SudoSessionInfo = New-SudoSessionTask -Credentials $AdminUserCreds -KeepOpen
-                if (!$SudoSessionInfo) {throw "Problem with the New-SudoSessionTask function from SudoTasks.psm1! Halting!"}
-            }
-            catch {
-                Write-Error $_
-                Get-PSSession | Remove-PSSession
-                $global:SudoCredentials = $null
-                $global:NewSessionAndOriginalStatus = $null
-                Restore-OriginalSystemConfigTask -ForceCredSSPReset
-                $global:FunctionResult = "1"
-                return
-            }
-        }
-
-        try {
-            if ($UACEnabled -and !$AppVeyorContext -and !$ElevationCheck) {
-                $InvCmdUACSplatParams = @{
-                    ScriptBlock     = $DisableUACSB
-                }
-                if ($SudoSessionInfo) {
-                    $InvCmdUACSplatParams.Add("Session",$SudoSessionInfo.ElevatedPSSession)
-                }
-
-                $OriginalUACValues = Invoke-Command @InvCmdUACSplatParams
-                if (!$OriginalUACValues) {throw "Problem with Invoke-Command `$DisableUACSB! Halting!"}
-            }
-
-            if ($(Get-LocalUser).Name -notcontains $SimpleUserName -or
-            $(Get-LocalGroupMember -Group "Administrators").Name -notcontains $UserName -or
-            $(Get-LocalGroupMember -Group "Remote Management Users").Name -notcontains $UserName
-            ) {
-                $InvCmdTestAcctSplatParams = @{
-                    ScriptBlock     = $TestAccountCreationSB
-                    ArgumentList    = @($UserName,$SimpleUserName,$Password)
-                }
-                if ($SudoSessionInfo) {
-                    $InvCmdTestAcctSplatParams.Add("Session",$SudoSessionInfo.ElevatedPSSession)
-                }
-                $TestAccountInfo = Invoke-Command @InvCmdTestAcctSplatParams
-                if (!$TestAccountInfo) {throw "Problem with Invoke-Command `$TestAccountCreationSB! Halting!"}
-            }
-        }
-        catch {
-            Write-Error $_
-            $global:FunctionResult = "1"
-            return
-        }
-    }
-    else {
-        Write-Error "Build tests are unable to proceed without system changes that require Admin Privileges! Halting!"
-        $global:FunctionResult = "1"
-        return
-    }
-}
-# END Build Tasks that we need to Run As Admin #
-
-##### END Tasks Unique to this Module's Build #####
-
-if ($ArrayOfInstallProgramSplatParams.Count -gt 0) {
-    Import-Module $(Resolve-Path "$PSScriptRoot\*Help*\ProgramInstallation.psm1").Path -WarningAction SilentlyContinue
-    if (![bool]$(Get-Module -Name "ProgramInstallation")) {
-        Write-Error "Problem importing the ProgramInstallation Module from $($(Resolve-Path "$PSScriptRoot\*Help*\ProgramInstallation.psm1").Path)! Halting!"
-        $global:FunctionResult = "1"
-        return
-    }
-
-    [System.Collections.ArrayList]$NeedInstallation = @()
-    [array]$InstalledProgramCheck = foreach ($ProgramHT in $ArrayOfInstallProgramSplatParams) {
-        $AlreadyInstalled = Get-InstalledProgram -ProgramName $ProgramHT['ProgramName']
-        if (!$AlreadyInstalled) {
-            $NeedInstallation.Add($ProgramHT)
-        }
-    }
-}
-
 if ([bool]$(Get-Module -Name $env:BHProjectName -ErrorAction SilentlyContinue)) {
     Remove-Module $env:BHProjectName -Force
 }
 
+##### BEGIN Tasks Unique to this Module's Build #####
+
 # BEGIN Build Tasks that we need to Run As Admin #
-if ($NeedInstallation.Count -gt 0 -or
-[bool]$(Get-Module -ListAvailable -Name $env:BHProjectName).RepositorySourceLocation -ne $null
-) { 
-    Import-Module $(Resolve-Path "$PSScriptRoot\*Help*\UserRights.psm1").Path -WarningAction SilentlyContinue
-    if (![bool]$(Get-Module -Name "UserRights")) {
-        Write-Error "Problem importing the UserRights Module from $($(Resolve-Path "$PSScriptRoot\*Help*\UserRights.psm1").Path)! Halting!"
-        $global:FunctionResult = "1"
-        return
-    }
 
-    if (!$AdminUserCreds -and !$ElevationCheck -and !$AppVeyorContext) {
-        $CurrentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-        $AdminUserCreds = [pscredential]::new($CurrentUser,$(Read-Host -Prompt "Please enter the password for '$CurrentUser'" -AsSecureString))
-    }
-
-    if ($AdminUserCreds) {
-        $UserIsAdmin = Get-UserAdminRights -UserAcct $AdminUserCreds.UserName
-    }
-
-    if ($UserIsAdmin -or $ElevationCheck -or $AppVeyorContext) {
-        if (!$AppVeyorContext -and !$ElevationCheck) {
-            Import-Module $(Resolve-Path "$PSScriptRoot\*Help*\SudoTasks.psm1").Path
-            if (![bool]$(Get-Module -Name "SudoTasks")) {
-                Write-Error "Problem importing the SudoTasks Module from $($(Resolve-Path "$PSScriptRoot\*Help*\SudoTasks.psm1").Path)! Halting!"
-                $global:FunctionResult = "1"
-                return
-            }
-        }
-
-        $FunctionsForSBUse = @(
-            ${Function:GetElevation}.Ast.Extent.Text
-            ${Function:Get-NativePath}.Ast.Extent.Text
-            ${Function:Pause-ForWarning}.Ast.Extent.Text
-            ${Function:Update-PackageManagement}.Ast.Extent.Text
-            ${Function:Install-ChocolateyCmdLine}.Ast.Extent.Text
-            ${Function:Refresh-ChocolateyEnv}.Ast.Extent.Text
-            ${Function:Get-InstalledProgram}.Ast.Extent.Text
-            ${Function:Install-Program}.Ast.Extent.Text
-        )
-
-        if ([bool]$(Get-Module -ListAvailable -Name $env:BHProjectName).RepositorySourceLocation -ne $null) {
-            $UninstallExistingModule = $True
-            $ProjectName = $env:BHProjectName
-        }
-
-        $ProgramInstallationSB = {
-            param(
-                [array]$FunctionsForSBUse,
-                [System.Collections.ArrayList]$NeedInstallation
-            )
-            # Load the functions we packed up:
-            $FunctionsForSBUse | foreach { Invoke-Expression $_ }
-
-            [System.Collections.ArrayList]$ProgramInstallResultsArray = @()
-            foreach ($SplatParams in $NeedInstallation) {
-                try {
-                    $ProgramInstallResults = Install-Program @SplatParams -ErrorAction Stop -WarningAction SilentlyContinue
-                    if (!$ProgramInstallResults) {throw "There was a problem installing $($SplatParams['ProgramName'])! Halting!"}
-
-                    $null = $ProgramInstallResultsArray.Add($ProgramInstallResults)
-                }
-                catch {
-                    Write-Error $_
-                    Write-Error "The Install-Program function failed! Halting!"
-                    $global:FunctionResult = "1"
-                    return
-                }
-            }
-
-            $ProgramInstallResultsArray
-        }
-
-        $UninstallModuleOfSameNameSB = {
-            param (
-                [bool]$UninstallExistingModule,
-                [string]$ProjectName
-            )
-
-            if ($UninstallExistingModule -and [bool]$(Get-Module -ListAvailable -Name $ProjectName -ErrorAction SilentlyContinue)) {
-                Uninstall-Module $ProjectName -Force -ErrorAction SilentlyContinue
-            }
-
-            [bool]$(Get-Module -ListAvailable -Name $ProjectName -ErrorAction SilentlyContinue)
-        }
-
-        if (!$SudoSessionInfo -and !$ElevationCheck -and !$AppVeyorContext) {
-            try {
-                $SudoSessionInfo = New-SudoSessionTask -Credentials $AdminUserCreds -KeepOpen
-                if (!$SudoSessionInfo) {throw "Problem with the New-SudoSessionTask function from SudoTasks.psm1! Halting!"}
-            }
-            catch {
-                Write-Error $_
-                $global:FunctionResult = "1"
-                return
-            }
-        }
-
-        try {
-            if ($NeedInstallation.Count -gt 0) {
-                $InvCmdPrgInstallSplatParams = @{
-                    ScriptBlock     = $ProgramInstallationSB
-                    ArgumentList    = @($FunctionsForSBUse,$NeedInstallation)
-                }
-                if ($SudoSessionInfo) {
-                    $InvCmdPrgInstallSplatParams.Add("Session",$SudoSessionInfo.ElevatedPSSession)
-                }
-
-                $ProgramInstallResultsArray = Invoke-Command @InvCmdPrgInstallSplatParams
-                if (!$ProgramInstallResultsArray) {throw "Problem with Invoke-Command `$ProgramInstallationSB! Halting!"}
-            }
-
-            if ($UninstallExistingModule) {
-                $InvCmdRmExistingModuleSplatParams = @{
-                    ScriptBlock     = $UninstallModuleOfSameNameSB
-                    ArgumentList    = @($UninstallExistingModule,$ProjectName)
-                }
-                if ($SudoSessionInfo) {
-                    $InvCmdRmExistingModuleSplatParams.Add("Session",$SudoSessionInfo.ElevatedPSSession)
-                }
-
-                $ModuleOfSameNameExists = Invoke-Command @InvCmdRmExistingModuleSplatParams
-                if ($ModuleOfSameNameExists -eq $True) {throw "Problem with Invoke-Command `$UninstallModuleOfSameNameSB! Halting!"}
-            }
-        }
-        catch {
-            Write-Error $_
-            $global:FunctionResult = "1"
-            return
-        }
-    }
-    else {
-        Write-Error "Build tests are unable to proceed without system changes that require Admin Privileges! Halting!"
-        $global:FunctionResult = "1"
-        return
-    }
-}
 # END Build Tasks that we need to Run As Admin #
 
+##### END Tasks Unique to this Module's Build #####
+
+# BEGIN Build Tasks that we need to Run As Admin #
+
+# END Build Tasks that we need to Run As Admin #
 
 $psakeFile = "$env:BHProjectPath\psake.ps1"
 if (!$(Test-Path $psakeFile)) {
@@ -614,11 +266,14 @@ if ($PSBoundParameters.ContainsKey('help')) {
 
 ##### BEGIN PSAKE Build #####
 
+# Add any test resources that you want to push to psake.ps1 and/or *.Tests.ps1 files
+$TestResources = @{}
+
 $InvokePSakeParams = @{}
 if ($Cert) {
     $InvokePSakeParams.Add("Cert",$Cert)
 }
-if ($TestResources) {
+if ($TestResources.Count -gt 0) {
     $InvokePSakeParams.Add("TestResources",$TestResources)
 }
 
@@ -629,56 +284,19 @@ else {
     Invoke-Psake $psakeFile -taskList $Task -nologo -ErrorAction Stop
 }
 
-if ($SudoSessionInfo) {
-    Import-Module $(Resolve-Path "$PSScriptRoot\*Help*\SudoTasks.psm1").Path
-    if (![bool]$(Get-Module -Name "SudoTasks")) {
-        Write-Error "Problem importing the SudoTasks Module from $($(Resolve-Path "$PSScriptRoot\*Help*\SudoTasks.psm1").Path)! Halting!"
-        $global:FunctionResult = "1"
-        return
-    }
-
-    $RevertTestUserCreationSB = {
-        $SimpleUserName = $using:SimpleUserName
-
-        if ($SimpleUserName) {
-            # Remove the Test Account Local Admin $env:ComputerName\testuser
-            if ([bool]$(Get-LocalUser -Name $SimpleUserName)) {
-                Remove-LocalUser -Name $SimpleUserName
-            }
-            if (Test-Path "C:\Users\$SimpleUserName") {
-                Remove-Item "C:\Users\$SimpleUserName" -Recurse -Force
-            }
-        }
-    }
-
-    $RevertUACChangesSB = {
-        # Enable UAC
-        Set-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin" -Value "5"
-        Set-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorUser" -Value "3"
-        Set-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA" -Value "1"
-        Set-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "PromptOnSecureDesktop" -Value "1"
-    }
-
-    if ($TestAccountCreationSB) {
-        $RemoveTestAccountResult = Invoke-Command -Session $SudoSessionInfo.ElevatedPSSession -ScriptBlock $RevertTestUserCreationSB
-    }
-    if ($DisableUACSB) {
-        $RevertUACChangesResult = Invoke-Command -Session $SudoSessionInfo.ElevatedPSSession -ScriptBlock $RevertUACChangesSB
-    }
-
-    $RemoveSudoSessionResult = Remove-SudoSessionTask -Credentials $AdminUserCreds -SessionToRemove $SudoSessionInfo.ElevatedPSSession -OriginalConfigInfo $SudoSessionInfo.WSManAndRegistryChanges
-}
-
 exit ( [int]( -not $psake.build_success ) )
 
 ##### END PSAKE Build #####
 
 
+
+
+
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU/4+GXRsmsW7/X2Y+Xt76Kf12
-# hF6gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUesf1wa/UgCtGCQcjsuIhEXbv
+# NBGgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -735,11 +353,11 @@ exit ( [int]( -not $psake.build_success ) )
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFMwsDfU78C58gosw
-# A8Rbw1PIrbK3MA0GCSqGSIb3DQEBAQUABIIBAMAyQOs06mWf3QKyExuv7ti/KVwB
-# nLlYWpodtlADm89iKGmWSanHYhtnkjRfaSGp2U/WtbOCO0vKiB6KaQbjJUeKtq8+
-# K4IonfUDgcMwGVEyuQHcVH6GW7R2Unn690ByrtJr7Unqonc4OCDV3pVoEmis8Epw
-# ZeEnvEczNsqOHh8ims0Qw0O5uYPYAg8VnGU32XYdKrJ3XS/koYCRGpjEr9DIe2o6
-# 60FqBtX28qJhtLTqY0eOh9MIaS+sl7PF3NimKYjBKSV5P28T4BEWuc7zeoIxDpd9
-# qlohaccJ00atVVD2f2+1HpqgRhjFfbi3lH0B3N2KAKtJGwglv6a2RTZHXV4=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFHK2I3Yq2/bjadMy
+# S+UB3KFu1ArdMA0GCSqGSIb3DQEBAQUABIIBAFwy1Vmr69IMhjP6HvxT0/n5owyi
+# HrSjkbu4h3sWXPdd6esou1/oemjSp9709NB1t3o3WeoRCkRvo4KUpMTO47BlDuf3
+# c0s2Cb83YlMi1HbYdwKMcUi3S2xa7hHLnNfPDy++FsaVjGKcOXTmdBXVRmcc03HO
+# PfhsX42wV0VwZhXqFkbb3NxoafZrOzkccehPGBr969SfSY0Nl216XTAy0A7xTiDj
+# 2S9mAGSe9sEOj5FBbl4nGxhV/DKYtNHQjc3x3Pr2Lum6HIMqUgwkJksrPXeuvOVZ
+# 0c+d+mZzL5eIBi2nCFQhVJhj7wpweF3gKYcuWoQvnA2k1rfgrSM69JB2g7A=
 # SIG # End signature block
