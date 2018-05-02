@@ -38,6 +38,27 @@ if (![bool]$(Get-Module -Name $env:BHProjectName -ErrorAction SilentlyContinue))
     Import-Module $env:BHPSModuleManifest -Force
 }
 
+Remove-Module PowerShellGet -Force -ErrorAction SilentlyContinue
+Remove-Module PackageManagement -Force -ErrorAction SilentlyContinue
+try {
+    Import-Module PackageManagement -ErrorAction Stop
+}
+catch {
+    Write-Error $_
+    Write-Error "Problem importing the PowerShell Module PackageManagement! Halting!"
+    $global:FunctionResult = "1"
+    return
+}
+try {
+    Import-Module PowerShellGet -ErrorAction Stop
+}
+catch {
+    Write-Error $_
+    Write-Error "Problem importing the PowerShell Module PowerShellGet! Halting!"
+    $global:FunctionResult = "1"
+    return
+}
+
 $InstallManagerValidOutputs = @("choco.exe","PowerShellGet")
 $InstallActionValidOutputs = @("Updated","FreshInstall")
 $InstallCheckValidOutputs = @($([Microsoft.PackageManagement.Packaging.SoftwareIdentity]::new()),"openssh")
@@ -143,11 +164,10 @@ function StartTesting {
     $PrgName = $SplatParamsSeriesItem.TestSeriesSplatParams['ProgramName']
 
     try {
-        $InstallProgramResult = Install-Program @IPSplatParams -ErrorAction Stop
+        $null = Install-Program @IPSplatParams -OutVariable "InstallProgramResult" -ErrorAction Stop | Out-Null
 
         # Cleanup
         # NOTE: Using -EA SilentlyContinue for Remove-SudoSession because if we error, want to be sure it's from Install-Program
-        Write-Host "Uninstalling $PrgName ..."
         $null = Cleanup -ProgramName $PrgName -ErrorAction SilentlyContinue
     }
     catch {
@@ -172,10 +192,12 @@ function StartTesting {
 $Functions = @(
     ${Function:Cleanup}.Ast.Extent.Text
     ${Function:CommonTestSeries}.Ast.Extent.Text
+    ${Function:StartTesting}.Ast.Extent.Text
 )
 
 $SplatParamsTestSeriesA = @{
-    ProgramName     = "openssh"
+    ProgramName         = "openssh"
+    ResolveCommandPath  = $False
 }
 $SplatParamsTestSeriesB = @{
     ProgramName     = "openssh"
@@ -278,7 +300,8 @@ $SplatParamsSeries = @(
 
 $global:MockResources = @{
     Functions           = $Functions
-    SplatParamSeries    = $SplatParamsSeries
+    SplatParamsSeries   = $SplatParamsSeries
+    FakeOutputHT        = $FakeOutputHT
 }
 
 InModuleScope ProgramManagement {
@@ -292,14 +315,15 @@ InModuleScope ProgramManagement {
             It "Should Throw An Error" {
                 # New-SudoSession Common Parameters
                 $IPSplat = @{
-                    ProgramName     = "openssh"
+                    ProgramName = "openssh"
+                    OutVariable = "InstallProgramResult"
                 }
 
                 {Install-Program @IPSplat} | Assert-Throw
             }
         }
 
-        $ContextInfo = $SplatParamsSeries[0].TestSeriesName
+        $ContextInfo = $global:MockResources['SplatParamsSeries'][0].TestSeriesName
         $ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
         Context $ContextStringBuilder {
             $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
@@ -344,14 +368,14 @@ InModuleScope ProgramManagement {
         }
 
         <#
-        $ContextInfo = $SplatParamsSeries[1].TestSeriesName
+        $ContextInfo = $global:MockResources['SplatParamsSeries'][1].TestSeriesName
         $ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
         Context $ContextStringBuilder {
             $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
             
             Mock 'GetElevation' -MockWith {$True}
 
-            $IPSplatParams = $SplatParamsSeries[0].TestSeriesSplatParams
+            $IPSplatParams = $global:MockResources['SplatParamsSeries'][1].TestSeriesSplatParams
             $PrgName = $SplatParamsSeries[0].TestSeriesSplatParams['ProgramName']
 
             It "Should Throw An Error" {
@@ -381,13 +405,11 @@ InModuleScope ProgramManagement {
     }
 }
 
-
-
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUyrH9Wx1WPqbbNOnr8QSnst+G
-# beygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUXm4WM5GEeIQELzAaNBjI3S3c
+# p8agggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -444,11 +466,11 @@ InModuleScope ProgramManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFGZ4EP9R4Guem6mo
-# Cs4pLbA20qE+MA0GCSqGSIb3DQEBAQUABIIBAKR4dUhjNuIjemET9+DssGifcghf
-# W1YhivYHBPnhU2XhvrfSs5aTxmbZj9WaRBV0r3bORI4mAlzMIsjvI/57zf6SuzaD
-# PqdiDiyPij0hiJPNulOFwz8w++JXEuH0h/M5XmEOLv0UFrpYjwwrNupXQalhsv0h
-# uuOv3jN9UFbYZagQwhyuXszg/fAMFPtbY9Z6ymTio/ZEDt0d8Ag/kdL4YOAsEqHn
-# ORves2lWnvMm8JR7F6SVt0MX6g81KlssG6/fS6kt5bqiyOe2byaxuxFMrls37Kl+
-# U5TpUDJbkV2CE8r9LWctvQZi1lf6ZUYQXXU/VgTxj4dpQSnce9UrD+WwlW4=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFNL5jGqrSgOapHSJ
+# 0Ylog2dyuKuiMA0GCSqGSIb3DQEBAQUABIIBADkw2Agr8G36UdPFr1cmyEkA3zO3
+# Hg5RKTSF5VmMoHv9/rxd2p+b8YiQ/waHa5YMcENsxLgycEgMAllq7LFhgIYTxY/M
+# lDQL6679ke9COZlYQ4Ta9qTkQm86keNAFF96MQtPWanRNhBAvfV3FPMw6iIe9NlZ
+# ChpAae3ljZYvhOMbwLlfoebTCnJkfU3fKbSNxFXXyO6g3GiQNgCn6z9cRNvSMy4o
+# RbrZ186ubquhuFkEwxCyvu+OsQszSBBEDIonnqIW2WXFKoV0ILxP59GzMMdBvexy
+# rr9W4v+4FtP2c5sDyzRqt1eMBr4heU1//B1jYFgfnnx4NtTCCp6Q1R3zv5c=
 # SIG # End signature block

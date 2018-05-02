@@ -235,20 +235,15 @@ if ($Cert) {
 }
 
 if ([bool]$(Get-Module -Name $env:BHProjectName -ErrorAction SilentlyContinue)) {
-    Remove-Module $env:BHProjectName -Force
+    Remove-Module $env:BHProjectName -Force -ErrorAction SilentlyContinue
 }
 
 ##### BEGIN Tasks Unique to this Module's Build #####
 
-# BEGIN Build Tasks that we need to Run As Admin #
-
-# END Build Tasks that we need to Run As Admin #
+Remove-Module PowerShellGet -Force -ErrorAction SilentlyContinue
+Remove-Module PackageManagement -Force -ErrorAction SilentlyContinue
 
 ##### END Tasks Unique to this Module's Build #####
-
-# BEGIN Build Tasks that we need to Run As Admin #
-
-# END Build Tasks that we need to Run As Admin #
 
 $psakeFile = "$env:BHProjectPath\psake.ps1"
 if (!$(Test-Path $psakeFile)) {
@@ -295,8 +290,8 @@ exit ( [int]( -not $psake.build_success ) )
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUesf1wa/UgCtGCQcjsuIhEXbv
-# NBGgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUEoJNa1J7XA2AKo51gpFeTNy6
+# wl+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -353,11 +348,11 @@ exit ( [int]( -not $psake.build_success ) )
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFHK2I3Yq2/bjadMy
-# S+UB3KFu1ArdMA0GCSqGSIb3DQEBAQUABIIBAFwy1Vmr69IMhjP6HvxT0/n5owyi
-# HrSjkbu4h3sWXPdd6esou1/oemjSp9709NB1t3o3WeoRCkRvo4KUpMTO47BlDuf3
-# c0s2Cb83YlMi1HbYdwKMcUi3S2xa7hHLnNfPDy++FsaVjGKcOXTmdBXVRmcc03HO
-# PfhsX42wV0VwZhXqFkbb3NxoafZrOzkccehPGBr969SfSY0Nl216XTAy0A7xTiDj
-# 2S9mAGSe9sEOj5FBbl4nGxhV/DKYtNHQjc3x3Pr2Lum6HIMqUgwkJksrPXeuvOVZ
-# 0c+d+mZzL5eIBi2nCFQhVJhj7wpweF3gKYcuWoQvnA2k1rfgrSM69JB2g7A=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFMltfUZDFPTg1yy7
+# tGueQ3ZZvM/2MA0GCSqGSIb3DQEBAQUABIIBACofTwyPoR5ZV8GpsjJikhtVMFxn
+# hLu50THoAzOzFwVZcCP2+mKIesKC1kIYZ8mdGCj+Cv0YJxdDw+dQIdLO0weFpdh7
+# fxtjPUJPDfZPaEi9V6Zad4s9dL3LZT47jgUkz/9nBK0TVIMR6L+Te4Ak3f60M2de
+# ozWi4Ze75DtqQLGgqa/hRvxuzQWvPm33sTiQvZE4lqVbrTkRM6wq7sAYvOv6DF0b
+# wt/14MKj9Jxi8icAsoriUm5cqXSpmxp9CLOv1B9Nwyi+58qICSDWGOfp1mw91YA3
+# NNuSBpUvUgyM1HxOTSgyFvEY/RSS5I7TwUdGvcao/VcgPWxwL/nDVOUsyvQ=
 # SIG # End signature block

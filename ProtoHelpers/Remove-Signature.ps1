@@ -41,7 +41,7 @@ function Remove-Signature {
                         Break
                     }
                     else {
-                        $null = $StringBuilder.AppendLine($Line)
+                        #$null = $StringBuilder.AppendLine($Line)
                     }
                 }
 
@@ -57,13 +57,11 @@ function Remove-Signature {
 
 
 
-
-
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUug5mjAxYphBuN+mYrKQjklPR
-# bX6gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUp6Ug6ZKTy+74m/pMW7Q8BmGG
+# AHqgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -120,11 +118,11 @@ function Remove-Signature {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFI5SLCbFQjQxrQlG
-# Jj/h6sXOMiOhMA0GCSqGSIb3DQEBAQUABIIBAGoqvhKEP1nDwV4oYMjromXNxEIz
-# RfFvzrWoobGIrHbe+ePU5eNLg6KMndoIcjeTwmevgBc1I50ASnBtrHskML+JCIrs
-# afHp2AfUuQJ3EXkiKMi4+blHARr+zyupXpPHpSaY4V58KOrSk4rbL6KW45N/LVzo
-# 14xlNNKFzHXU97147GBOgV2p8tig8pdk/D1Y0ROldmkUsX4/VPeq/RdrKAKyKgfM
-# qqgbCzeHQOBRAbt9Jd2CrRjyD2Kh/AuR74usr4HeTSFoi32M4D59SY96uuV5Qm0V
-# +sB/mjv/Iusk2wR6SC65+YSqz+Gr3dKsYMlBA8aLBC8RLtkO4tBl9lbm0HA=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFPpneZAlSsPdSyvL
+# 268QGqbYDVoCMA0GCSqGSIb3DQEBAQUABIIBADck45cm41XGUMgDXuzGkO8UPK96
+# p97WewyTZfcNi/20JmnvwVct3abX+3CTIOUHuaG3YqB9gvkiHH5xjOddkp07r3JK
+# ff6vttHQNvN20PObJH7SDPVZvLaV0qMjNZhv/c7+Yayx+/M70vtQHRNbeiE9QzVp
+# MA3e+vyYToate7JjPrJ/3A2VhxEVMFBCktX2EDSBAk3HeG+iGuGBKDcRpvuL4yBZ
+# H5Z2dtfaUk6ShJ31qemVVYxfarE/YWtqfNrZrZ7tpveOOy+gLi28q5gBez6nYeOT
+# rV/K5O0dN00coG5o30ngrGZYjvLWJ3SKTcEjxsSzOcxnWoZucExQnZQAmJY=
 # SIG # End signature block
