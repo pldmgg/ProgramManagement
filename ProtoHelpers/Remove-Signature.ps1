@@ -41,11 +41,11 @@ function Remove-Signature {
                         Break
                     }
                     else {
-                        #$null = $StringBuilder.AppendLine($Line)
+                        $null = $StringBuilder.AppendLine($Line)
                     }
                 }
 
-                Set-Content -Path $FullPath -Value $StringBuilder.ToString()
+                Set-Content -Path $FullPath -Value $StringBuilder.ToString().Trim()
             }
             catch {
                 Write-Error -Message $_.Exception.Message
@@ -54,14 +54,11 @@ function Remove-Signature {
     }
 }
 
-
-
-
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUp6Ug6ZKTy+74m/pMW7Q8BmGG
-# AHqgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUGtrwp+9NOdNM7Lug8kFvHU6M
+# HdWgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -118,11 +115,11 @@ function Remove-Signature {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFPpneZAlSsPdSyvL
-# 268QGqbYDVoCMA0GCSqGSIb3DQEBAQUABIIBADck45cm41XGUMgDXuzGkO8UPK96
-# p97WewyTZfcNi/20JmnvwVct3abX+3CTIOUHuaG3YqB9gvkiHH5xjOddkp07r3JK
-# ff6vttHQNvN20PObJH7SDPVZvLaV0qMjNZhv/c7+Yayx+/M70vtQHRNbeiE9QzVp
-# MA3e+vyYToate7JjPrJ/3A2VhxEVMFBCktX2EDSBAk3HeG+iGuGBKDcRpvuL4yBZ
-# H5Z2dtfaUk6ShJ31qemVVYxfarE/YWtqfNrZrZ7tpveOOy+gLi28q5gBez6nYeOT
-# rV/K5O0dN00coG5o30ngrGZYjvLWJ3SKTcEjxsSzOcxnWoZucExQnZQAmJY=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFJ3JmInE1CmhnTZl
+# tGVlL48f9iTBMA0GCSqGSIb3DQEBAQUABIIBAKnzytOKiPHyXLFVFIkS6ZDsF/6B
+# opTjsLd27iPHqg8aXTAuV+E6Lv1pw6gX1rzpm5RTi+AUOXPUe0kgfW2/FaEm61em
+# UhQOKYy2BsEIUyOSyt/fwet0rBH8Uya2W8tmQrNeHWXJp1O85FncR0TT5pk/tbH+
+# /L2UXBvt+pmaI45Eveyoc+M209YddCQRBg/IRypc1qMKmNgpJl101lCbLzF/mJsP
+# lkzXqqC06TSuc7acmatuJ0+Zl+BTrraKiIAgQiV5R8u0X69ue/4IHr1SoM3f4FG7
+# oTNzbRZyO+a+tQFfh+K9BcNQIT1A15j/uvIS3VyZuegEEnvvBmiin9yTEhc=
 # SIG # End signature block

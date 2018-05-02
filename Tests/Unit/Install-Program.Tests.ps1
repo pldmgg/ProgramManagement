@@ -149,10 +149,6 @@ function StartTesting {
     [CmdletBinding()]
     Param (
         [Parameter(Mandatory=$True)]
-        [ValidateSet("CommonTestSeries")]
-        $TestSeries,
-
-        [Parameter(Mandatory=$True)]
         $SplatParamsSeriesItem,
 
         [Parameter(Mandatory=$True)]
@@ -174,13 +170,11 @@ function StartTesting {
         # NOTE: Using Warning to output error message because any Error will prevent the rest of this Context block from running
         Write-Warning $($_.Exception.Message)
         
-        if ($InstallProgramResult) {
-            Cleanup -ProgramName $PrgName -ErrorAction SilentlyContinue
-        }
+        $null =Cleanup -ProgramName $PrgName -ErrorAction SilentlyContinue
     }
 
     if ($InstallProgramResult) {
-        switch ($TestSeries) {
+        switch ($SplatParamsSeriesItem.TestSeriesFunctionNames) {
             'CommonTestSeries' { $InstallProgramResult | CommonTestSeries }
         }
     }
@@ -246,55 +240,55 @@ $SplatParamsSeries = @(
         TestSeriesName          = "ProgramName"
         TestSeriesDescription   = "Test output using: -ProgramName '$($SplatParamsTestSeriesA['ProgramName'])'"
         TestSeriesSplatParams   = $SplatParamsTestSeriesA
-        TestSeriesFunction      = ${Function:CommonTestSeries}.Ast.Extent.Text
+        TestSeriesFunctionNames = @("CommonTestSeries")
     }
     [pscustomobject]@{
         TestSeriesName          = "ProgramName and CommandName"
         TestSeriesDescription   = "Test output using: $ProgramAndCmdNameString"
         TestSeriesSplatParams   = $SplatParamsTestSeriesB
-        TestSeriesFunction      = ${Function:CommonTestSeries}.Ast.Extent.Text
+        TestSeriesFunctionNames = @("CommonTestSeries")
     }
     [pscustomobject]@{
         TestSeriesName          = "ProgramName and CommandName and PreRelease"
         TestSeriesDescription   = "Test output using: $ProgramAndCmdNameString -PreRelease"
         TestSeriesSplatParams   = $SplatParamsTestSeriesC
-        TestSeriesFunction      = ${Function:CommonTestSeries}.Ast.Extent.Text
+        TestSeriesFunctionNames = @("CommonTestSeries")
     }
     [pscustomobject]@{
         TestSeriesName          = "ProgramName and CommandName and ResolveCommandPath is False"
         TestSeriesDescription   = "Test output using: $ProgramAndCmdNameString -ResolveCommandPath:`$False"
         TestSeriesSplatParams   = $SplatParamsTestSeriesD
-        TestSeriesFunction      = ${Function:CommonTestSeries}.Ast.Extent.Text
+        TestSeriesFunctionNames = @("CommonTestSeries")
     }
     [pscustomobject]@{
         TestSeriesName          = "ProgramName and CommandName and NoUpdatePackageManagement is False"
         TestSeriesDescription   = "Test output using: $ProgramAndCmdNameString -NoUpdatePackageManagement:`$False"
         TestSeriesSplatParams   = $SplatParamsTestSeriesE
-        TestSeriesFunction      = ${Function:CommonTestSeries}.Ast.Extent.Text
+        TestSeriesFunctionNames = @("CommonTestSeries")
     }
     [pscustomobject]@{
         TestSeriesName          = "ProgramName and CommandName and ExpectedInstallLocation"
         TestSeriesDescription   = "Test output using: $ProgramAndCmdNameString -ExpectedInstallLocation 'C:\Program Files\OpenSSH-Win64'"
         TestSeriesSplatParams   = $SplatParamsTestSeriesF
-        TestSeriesFunction      = ${Function:CommonTestSeries}.Ast.Extent.Text
+        TestSeriesFunctionNames = @("CommonTestSeries")
     }
     [pscustomobject]@{
         TestSeriesName          = "ProgramName and CommandName and PowerShellGet"
         TestSeriesDescription   = "Test output using: $ProgramAndCmdNameString -UserPowerShellGet"
         TestSeriesSplatParams   = $SplatParamsTestSeriesG
-        TestSeriesFunction      = ${Function:CommonTestSeries}.Ast.Extent.Text
+        TestSeriesFunctionNames = @("CommonTestSeries")
     }
     [pscustomobject]@{
         TestSeriesName          = "ProgramName and CommandName and PowerShellGet and ForceChocolateyInstallScript"
         TestSeriesDescription   = "Test output using: $ProgramAndCmdNameString -UserPowerShellGet -ForceChocoInstallScript"
         TestSeriesSplatParams   = $SplatParamsTestSeriesH
-        TestSeriesFunction      = ${Function:CommonTestSeries}.Ast.Extent.Text
+        TestSeriesFunctionNames = @("CommonTestSeries")
     }
     [pscustomobject]@{
         TestSeriesName          = "ProgramName and CommandName and PowerShellGet and UseChocolateyCmdLine"
         TestSeriesDescription   = "Test output using: $ProgramAndCmdNameString -UseChocolateyCmdLine"
         TestSeriesSplatParams   = $SplatParamsTestSeriesI
-        TestSeriesFunction      = ${Function:CommonTestSeries}.Ast.Extent.Text
+        TestSeriesFunctionNames = @("CommonTestSeries")
     }
 )
 
@@ -323,93 +317,86 @@ InModuleScope ProgramManagement {
             }
         }
 
+        
         $ContextInfo = $global:MockResources['SplatParamsSeries'][0].TestSeriesName
-        $ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
-        Context $ContextStringBuilder {
+        $global:ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
+        Context $global:ContextStringBuilder {
             $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
-            
             Mock 'GetElevation' -MockWith {$True}
-
-            $StartTestingSplatParams = @{
-                SplatParamsSeriesItem       = $global:MockResources['SplatParamsSeries'][0]
-                TestSeries                  = "CommonTestSeries"
-                ContextString               = $ContextStringBuilder
-            }
-            StartTesting @StartTestingSplatParams 
-            
-            <#
-            $IPSplatParams = $SplatParamsSeries[0].TestSeriesSplatParams
-            $PrgName = $SplatParamsSeries[0].TestSeriesSplatParams['ProgramName']
-
-            try {
-                $InstallProgramResult = Install-Program @IPSplatParams -ErrorAction Stop
-
-                # Cleanup
-                # NOTE: Using -EA SilentlyContinue for Remove-SudoSession because if we error, want to be sure it's from Install-Program
-                Write-Host "Uninstalling $PrgName ..."
-                $null = Cleanup -ProgramName $PrgName -ErrorAction SilentlyContinue
-            }
-            catch {
-                # NOTE: Using Warning to output error message because any Error will prevent the rest of this Context block from running
-                Write-Warning $($_.Exception.Message)
-                
-                if ($InstallProgramResult) {
-                    Cleanup -ProgramName $PrgName -ErrorAction SilentlyContinue
-                }
-            }
-
-            if ($InstallProgramResult) {
-                $InstallProgramResult | CommonTestSeries
-            }
-            else {
-                Write-Warning "Unable to un 'CommonTestSeries' in Context...`n    '$ContextStringBuilder'`nbecause the 'Install-Program' function failed to output an object!"
-            }
-            #>
+            StartTesting -SplatParamsSeriesItem $global:MockResources['SplatParamsSeries'][0] -ContextString $global:ContextStringBuilder
         }
 
-        <#
         $ContextInfo = $global:MockResources['SplatParamsSeries'][1].TestSeriesName
-        $ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
-        Context $ContextStringBuilder {
+        $global:ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
+        Context $global:ContextStringBuilder {
             $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
-            
             Mock 'GetElevation' -MockWith {$True}
-
-            $IPSplatParams = $global:MockResources['SplatParamsSeries'][1].TestSeriesSplatParams
-            $PrgName = $SplatParamsSeries[0].TestSeriesSplatParams['ProgramName']
-
-            It "Should Throw An Error" {
-                # New-SudoSession Common Parameters
-                $NSSplat = @{
-                    WarningAction   = "SilentlyContinue"
-                    OutVariable     = "SudoSessionInfo"
-                }
-
-                {New-SudoSession @NSSplat} | Assert-Throw
-
-                # Just in case it does NOT error for some reason, we need to cleanup...
-                if ($SudoSessionInfo) {
-                    $RMSplat = @{
-                        Credentials     = $global:MockResources['Creds']
-                        SessionToRemove     = $SudoSessionInfo.ElevatedPSSession
-                        OriginalConfigInfo  = $SudoSessionInfo.WSManAndRegistryChanges
-                        ErrorAction         = "SilentlyContinue"
-                    }
-                    $null = Remove-SudoSession @RMSplat    
-                }
-                $global:SudoCredentials = $null
-                $global:NewSessionAndOriginalStatus = $null
-            }
+            StartTesting -SplatParamsSeriesItem $global:MockResources['SplatParamsSeries'][1] -ContextString $global:ContextStringBuilder
         }
-        #>
+
+        $ContextInfo = $global:MockResources['SplatParamsSeries'][2].TestSeriesName
+        $global:ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
+        Context $global:ContextStringBuilder {
+            $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
+            Mock 'GetElevation' -MockWith {$True}
+            StartTesting -SplatParamsSeriesItem $global:MockResources['SplatParamsSeries'][2] -ContextString $global:ContextStringBuilder
+        }
+
+        $ContextInfo = $global:MockResources['SplatParamsSeries'][3].TestSeriesName
+        $global:ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
+        Context $global:ContextStringBuilder {
+            $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
+            Mock 'GetElevation' -MockWith {$True}
+            StartTesting -SplatParamsSeriesItem $global:MockResources['SplatParamsSeries'][3] -ContextString $global:ContextStringBuilder
+        }
+
+        $ContextInfo = $global:MockResources['SplatParamsSeries'][4].TestSeriesName
+        $global:ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
+        Context $global:ContextStringBuilder {
+            $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
+            Mock 'GetElevation' -MockWith {$True}
+            StartTesting -SplatParamsSeriesItem $global:MockResources['SplatParamsSeries'][4] -ContextString $global:ContextStringBuilder
+        }
+
+        $ContextInfo = $global:MockResources['SplatParamsSeries'][5].TestSeriesName
+        $global:ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
+        Context $global:ContextStringBuilder {
+            $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
+            Mock 'GetElevation' -MockWith {$True}
+            StartTesting -SplatParamsSeriesItem $global:MockResources['SplatParamsSeries'][5] -ContextString $global:ContextStringBuilder
+        }
+
+        $ContextInfo = $global:MockResources['SplatParamsSeries'][6].TestSeriesName
+        $global:ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
+        Context $global:ContextStringBuilder {
+            $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
+            Mock 'GetElevation' -MockWith {$True}
+            StartTesting -SplatParamsSeriesItem $global:MockResources['SplatParamsSeries'][6] -ContextString $global:ContextStringBuilder
+        }
+
+        $ContextInfo = $global:MockResources['SplatParamsSeries'][7].TestSeriesName
+        $global:ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
+        Context $global:ContextStringBuilder {
+            $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
+            Mock 'GetElevation' -MockWith {$True}
+            StartTesting -SplatParamsSeriesItem $global:MockResources['SplatParamsSeries'][7] -ContextString $global:ContextStringBuilder
+        }
+
+        $ContextInfo = $global:MockResources['SplatParamsSeries'][8].TestSeriesName
+        $global:ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
+        Context $global:ContextStringBuilder {
+            $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
+            Mock 'GetElevation' -MockWith {$True}
+            StartTesting -SplatParamsSeriesItem $global:MockResources['SplatParamsSeries'][8] -ContextString $global:ContextStringBuilder
+        }
     }
 }
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUXm4WM5GEeIQELzAaNBjI3S3c
-# p8agggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUONRhJD4IQ5Um5DWZdaCY+/e5
+# Svmgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -466,11 +453,11 @@ InModuleScope ProgramManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFNL5jGqrSgOapHSJ
-# 0Ylog2dyuKuiMA0GCSqGSIb3DQEBAQUABIIBADkw2Agr8G36UdPFr1cmyEkA3zO3
-# Hg5RKTSF5VmMoHv9/rxd2p+b8YiQ/waHa5YMcENsxLgycEgMAllq7LFhgIYTxY/M
-# lDQL6679ke9COZlYQ4Ta9qTkQm86keNAFF96MQtPWanRNhBAvfV3FPMw6iIe9NlZ
-# ChpAae3ljZYvhOMbwLlfoebTCnJkfU3fKbSNxFXXyO6g3GiQNgCn6z9cRNvSMy4o
-# RbrZ186ubquhuFkEwxCyvu+OsQszSBBEDIonnqIW2WXFKoV0ILxP59GzMMdBvexy
-# rr9W4v+4FtP2c5sDyzRqt1eMBr4heU1//B1jYFgfnnx4NtTCCp6Q1R3zv5c=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFC9OHvBunSgR6DV4
+# u2cdzzBBuTjbMA0GCSqGSIb3DQEBAQUABIIBADYCiRnUqE6RliTF54pQwZSsa2ky
+# 0mOGg+RDFDuSIbHE3SvjckbqcBGs5uMO+LkAFRZBdKK7MNRMz9aQd2Po4Hs4ZntP
+# LK173p9owRDAvWa/LVOtuftLlTT0q5GMNySOyd0ar9Q7YQsO+QV2HdaGq458nlP7
+# IDnMn1f7Ymw124V5Q01uKrFUwVTa3k/kS4feSnxSqB5BIvbbZHevHRmdxHrBbvSW
+# 8v3jAclAfazrL2mP4IZguDpk2yphJE9XFpbT0fs93z/BUxXdUHkWBqcAStn641Zn
+# CqmQskF4rsrAoegif7/m8fAvPKKBrOrQgc9Nv72S116fM0RxxG75rtKghkw=
 # SIG # End signature block

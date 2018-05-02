@@ -321,32 +321,64 @@ function Install-Program {
         }
     }
 
-    # If PackageManagement/PowerShellGet is installed, determine if $ProgramName is installed
-    if ([bool]$(Get-Command Get-Package -ErrorAction SilentlyContinue)) {
-        $PackageManagementInstalledPrograms = Get-Package
-
-        # If teh Current Installed Version is not equal to the Latest Version available, then it's outdated
-        if ($PackageManagementInstalledPrograms.Name -contains $ProgramName) {
-            $PackageManagementCurrentInstalledPackage = $PackageManagementInstalledPrograms | Where-Object {$_.Name -eq $ProgramName}
-            $PackageManagementLatestVersion = $(Find-Package -Name $ProgramName -Source chocolatey -AllVersions | Sort-Object -Property Version)[-1]
-        }
+    # Get-PackageManagerInstallObjects
+    try {
+        #$null = clist --local-only
+        $PackageManagerInstallObjects = Get-PackageManagerInstallObjects -ProgramName $ProgramName -ErrorAction SilentlyContinue
+        [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
+        [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
+        [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
+    }
+    catch {
+        Write-Error $_
+        $global:FunctionResult = "1"
+        return
     }
 
-    # If the Chocolatey CmdLine is installed, get a list of programs installed via Chocolatey
-    if ([bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
-        $ChocolateyInstalledProgramsPrep = clist --local-only
-        $ChocolateyInstalledProgramsPrep = $ChocolateyInstalledProgramsPrep[1..$($ChocolateyInstalledProgramsPrep.Count-2)]
+    if ($PSGetInstalledPackageObjects.Count -gt 0) {
+        if ($PSGetInstalledPackageObjects.Count -eq 1) {
+            $PackageManagementCurrentInstalledPackage = $PSGetInstalledPackageObjects
+            $PackageManagementLatestVersion = $(Find-Package -Name $PSGetInstalledPackageObjects.Name -Source chocolatey -AllVersions | Sort-Object -Property Version)[-1]
+        }
+        if ($PSGetInstalledPackageObjects.Count -gt 1) {
+            $ExactMatchCheck = $PSGetInstalledPackageObjects | Where-Object {$_.Name -eq $ProgramName}
+            if (!$ExactMatchCheck) {
+                Write-Warning "The following Programs are currently installed and match the string '$ProgramName':"
+                for ($i=0; $i -lt $PSGetInstalledPackageObjects.Count; $i++) {
+                    Write-Host "$i) $($PSGetInstalledPackageObjects[$i].Name)"
+                }
+                $ValidChoiceNumbers = 0..$($PSGetInstalledPackageObjects.Count-1)
+                $ProgramChoiceNumber = Read-Host -Prompt " Please choose the number that corresponds to the Program you would like to update:"
+                while ($ValidChoiceNumbers -notcontains $ProgramChoiceNumber) {
+                    Write-Warning "'$ProgramChoiceNumber' is not a valid option. Please choose: $($ValidChoicenumbers -join ", ")"
+                    $ProgramChoiceNumber = Read-Host -Prompt " Please choose the number that corresponds to the Program you would like to update:"
+                }
 
-        [System.Collections.ArrayList]$ChocolateyInstalledProgramsPSObjects = @()
-
-        foreach ($program in $ChocolateyInstalledProgramsPrep) {
-            $programParsed = $program -split " "
-            $PSCustomObject = [pscustomobject]@{
-                ProgramName     = $programParsed[0]
-                Version         = $programParsed[1]
+                $ProgramName = $PSGetInstalledPackageObjects[$ProgramChoiceNumber].Name
+                $PackageManagementLatestVersion = $(Find-Package -Name $UpdatedProgramName -Source chocolatey -AllVersions | Sort-Object -Property Version)[-1]
             }
+            else {
+                $PackageManagementLatestVersion = $(Find-Package -Name $ProgramName -Source chocolatey -AllVersions | Sort-Object -Property Version)[-1]
+            }
+        }
+    }
+    if ($ChocolateyInstalledProgramObjects.Count -gt 0) {
+        if ($ChocolateyInstalledProgramObjects.Count -gt 1) {
+            $ExactMatchCheck = $ChocolateyInstalledProgramObjects | Where-Object {$_.ProgramName -eq $ProgramName}
+            if (!$ExactMatchCheck) {
+                Write-Warning "The following Programs are currently installed and match the string '$ProgramName':"
+                for ($i=0; $i -lt $ChocolateyInstalledProgramObjects.Count; $i++) {
+                    Write-Host "$i) $($ChocolateyInstalledProgramObjects[$i].ProgramName)"
+                }
+                $ValidChoiceNumbers = 0..$($ChocolateyInstalledProgramObjects.Count-1)
+                $ProgramChoiceNumber = Read-Host -Prompt " Please choose the number that corresponds to the Program you would like to update:"
+                while ($ValidChoiceNumbers -notcontains $ProgramChoiceNumber) {
+                    Write-Warning "'$ProgramChoiceNumber' is not a valid option. Please choose: $($ValidChoicenumbers -join ", ")"
+                    $ProgramChoiceNumber = Read-Host -Prompt " Please choose the number that corresponds to the Program you would like to update:"
+                }
 
-            $null = $ChocolateyInstalledProgramsPSObjects.Add($PSCustomObject)
+                $ProgramName = $ChocolateyInstalledProgramObjects[$ProgramChoiceNumber].ProgramName
+            }
         }
 
         # Also get a list of outdated packages in case this Install-Program function is used to update a package
@@ -600,24 +632,33 @@ function Install-Program {
                             Write-Host "Trying the Chocolatey Install script from $ChocolateyInstallScript..." -ForegroundColor Yellow
 
                             # Make sure Chocolatey Modules / helper scripts are loaded
-                            $ChocoInstallerModuleSearch = @() 
                             if (Test-Path "C:\ProgramData\chocolatey") {
                                 $ChocoPath = "C:\ProgramData\chocolatey"
                             }
                             elseif (Test-Path "C:\Chocolatey") {
-                                $ChocoPath - "C:\Chocolatey"
+                                $ChocoPath = "C:\Chocolatey"
                             }
-                            $ChocoInstallerModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File -Filter "chocolateyinstaller.psm1"
-                            $ChocoProfileModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File -Filter "chocolateyProfile.psm1"
-                            $ChocoScriptRunnerFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File -Filter "chocolateyScriptRunner.ps1"
-                            $ChocoTabExpansionFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File -Filter "chocolateyTabExpansion.ps1"
-                            Import-Module $ChocoInstallerModuleFileItem.FullName
-                            Import-Module $ChocoProfileModuleFileItem.FullName
-                            . $ChocoScriptRunnerFileItem.FullName
-                            . $ChocoTabExpansionFileItem.FullName
-
+                            $ChocoInstallerModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "openssh" -and $_.FullName -match "chocolateyinstaller\.psm1"}
+                            $ChocoProfileModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "openssh" -and $_.FullName -match "chocolateyProfile\.psm1"}
+                            $ChocoScriptRunnerFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "openssh" -and $_.FullName -match "chocolateyScriptRunner\.ps1"}
+                            $ChocoTabExpansionFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "openssh" -and $_.FullName -match "chocolateyTabExpansion\.ps1"}
+                            if ($ChocoInstallerModuleFileItem) {
+                                Import-Module $ChocoInstallerModuleFileItem.FullName -ErrorAction SilentlyContinue
+                                $ChocoHelpersDir = $ChocoInstallerModuleFileItem.Directory
+                            }
+                            elseif ($ChocoProfileModuleFileItem) {
+                                Import-Module $ChocoProfileModuleFileItem.FullName -ErrorAction SilentlyContinue
+                                $ChocoHelpersDir = $ChocoProfileModuleFileItem.Directory
+                            }
+                            elseif ($ChocoScriptRunnerFileItem) {
+                                $ChocoHelpersDir = $ChocoScriptRunnerFileItem.Directory
+                            }
+                            elseif ($ChocoTabExpansionFileItem) {
+                                $ChocoHelpersDir = $ChocoTabExpansionFileItem.Directory
+                            }
+                            
                             # Run the install script
-                            & $ChocolateyInstallScript
+                            $null = & $ChocolateyInstallScript
 
                             # Now that the $ChocolateyInstallScript ran, search for the main executable again
                             Synchronize-SystemPathEnvPath
@@ -648,26 +689,36 @@ function Install-Program {
                                 $null = Uninstall-Package $ProgramName -Force -ErrorAction SilentlyContinue
                             }
 
-                            # Now we need to try the Chocolatey CmdLine. Easiest way to do this at this point is to just
-                            # invoke the function again with the same parameters, but specify -UseChocolateyCmdLine
-                            $BoundParametersDictionary = $PSCmdlet.MyInvocation.BoundParameters
-                            $InstallProgramSplatParams = @{}
-                            foreach ($kvpair in $BoundParametersDictionary.GetEnumerator()) {
-                                $key = $kvpair.Key
-                                $value = $BoundParametersDictionary[$key]
-                                if ($key -notmatch "UsePowerShellGet|ForceChocoInstallScript" -and $InstallProgramSplatParams.Keys -notcontains $key) {
-                                    $InstallProgramSplatParams.Add($key,$value)
-                                }
-                            }
-                            if ($InstallProgramSplatParams.Keys -notcontains "UseChocolateyCmdLine") {
-                                $InstallProgramSplatParams.Add("UseChocolateyCmdLine",$True)
-                            }
-                            if ($InstallProgramSplatParams.Keys -notcontains "NoUpdatePackageManagement") {
-                                $InstallProgramSplatParams.Add("NoUpdatePackageManagement",$True)
-                            }
-                            Install-Program @InstallProgramSplatParams
+                            if (!$UsePowerShellGet -and !$ForceChocoInstallScript) {
+                                Remove-Module chocolateyinstaller -ErrorAction SilentlyContinue
+                                Remove-Module chocolateyProfile -ErrorAction SilentlyContinue
 
-                            return
+                                # Now we need to try the Chocolatey CmdLine. Easiest way to do this at this point is to just
+                                # invoke the function again with the same parameters, but specify -UseChocolateyCmdLine
+                                $BoundParametersDictionary = $PSCmdlet.MyInvocation.BoundParameters
+                                $InstallProgramSplatParams = @{}
+                                foreach ($kvpair in $BoundParametersDictionary.GetEnumerator()) {
+                                    $key = $kvpair.Key
+                                    $value = $BoundParametersDictionary[$key]
+                                    if ($key -notmatch "UsePowerShellGet|ForceChocoInstallScript" -and $InstallProgramSplatParams.Keys -notcontains $key) {
+                                        $InstallProgramSplatParams.Add($key,$value)
+                                    }
+                                }
+                                if ($InstallProgramSplatParams.Keys -notcontains "UseChocolateyCmdLine") {
+                                    $InstallProgramSplatParams.Add("UseChocolateyCmdLine",$True)
+                                }
+                                if ($InstallProgramSplatParams.Keys -notcontains "NoUpdatePackageManagement") {
+                                    $InstallProgramSplatParams.Add("NoUpdatePackageManagement",$True)
+                                }
+                                $PMInstall = $False
+                                Install-Program @InstallProgramSplatParams
+                                
+                                return
+                            }
+                            else {
+                                $global:FunctionResult = "1"
+                                return
+                            }
                         }
                     }
                 }
@@ -780,7 +831,9 @@ function Install-Program {
 
     $env:Path = Refresh-ChocolateyEnv
 
-    Pop-Location
+    1..3 | foreach {Pop-Location}
+
+    Write-Host "The program '$ProgramName' was installed successfully!" -ForegroundColor Green
 
     [pscustomobject]@{
         InstallManager      = $InstallManager
@@ -799,8 +852,8 @@ function Install-Program {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUDYc9NaHlDV+UixdSr29tIEGD
-# IGygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUGDV7jbizYO5fNIdIUfANco6Y
+# rAqgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -857,11 +910,11 @@ function Install-Program {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFHMTduNTFPPTbr6r
-# 1f8KlN3MRQCaMA0GCSqGSIb3DQEBAQUABIIBAKRitbzYsUjizzYE/JV8WcYxH37x
-# fVXy22q9oBJyeyqmub1cvp5U/+cQp7Ao6DTMp5Dgcasmmmi5tBd/e8Yy1ULR5wQl
-# W4HOg+Qv39STdSCyn2+86K/3erxPOQNP4K1KH2sxtNQF6k2BY3sALW0/mTYqFvYj
-# o3rB9jUMWbzoeH7vE7zGTULLFor4eu8CZsFE6nKnIxwVNZJZ/7FfkKPngYOIeb0m
-# 1EmQYcThFdSFXGXhpDtdmvepkXcZD3ZUOMal8z0VHiGGEeIbQ9tdkfgbwePyWrJz
-# mxkdd6zM3QRA+jlzR39npyL2H6LdSf/BsHklpuqHoIVfkXRu317ZTaUlFXI=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFOrog6Rv6A0/AZES
+# vDd4FHTDfIgoMA0GCSqGSIb3DQEBAQUABIIBAHF+6+tWcPgtlStQSZfmU+aHTfib
+# 17EWgzxbjXO+gogFYDkAaUrgH1JbMIlzsLu+Mv05d5akVn12CGt0b2CQcF2+JXIG
+# ss9h9TBNaMNyhum9RWDSNR9WvXZuO8QeTm4VcsLBvZrp9zZWQbIOY4g51glAkY7b
+# iQ4D7eJzSB+1BCocSuBgAeikH55p0Iaq9mT8BQ7Et7UjYOBFBbAuzIAVs2OWjFet
+# Ve1a1fbDvWqMX6Mkjse9YORCqObTtIdUp3Cui7WsqLEfCEpMUPbJ4MX95iDbVMWY
+# 1mpIya7U9qzsC5eRjgDYkgSoXuWn3R//gRCwW+aE2f41Z/+Eh9s720tiyIY=
 # SIG # End signature block
