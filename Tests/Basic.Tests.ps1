@@ -29,12 +29,6 @@ if($env:BHBranchName -notlike "master" -or $env:BHCommitMessage -match "!verbose
 if ([bool]$(Get-Module -Name $env:BHProjectName -ErrorAction SilentlyContinue)) {
     Remove-Module $env:BHProjectName -Force
 }
-$global:SudoCredentials = $null
-$global:NewSessionAndOriginalStatus = $null
-
-if ([bool]$(Get-Module -Name SudoTasks)) {
-    Remove-Module -Name SudoTasks -Force
-}
 
 Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation' -Fixture {
     $Scripts = Get-ChildItem $env:BHProjectPath -Include *.ps1,*.psm1,*.psd1 -Recurse
@@ -60,11 +54,19 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
         $Module = Get-Module $env:BHProjectName
         $Module.Name -eq $env:BHProjectName | Should Be $True
         $Commands = $Module.ExportedCommands.Keys
+        $Commands -contains 'AddLastWriteTimeToRegKeys' | Should Be $False
         $Commands -contains 'GetElevation' | Should Be $False
-        $Commands -contains 'New-SudoSession' | Should Be $True
-        $Commands -contains 'Start-SudoSession' | Should Be $True
-        $Commands -contains 'Remove-SudoSession' | Should Be $True
-        $Commands -contains 'Restore-OriginalSystemConfig' | Should Be $True
+        $Commands -contains 'GetMSIFileInfo' | Should Be $False
+        $Commands -contains 'GetNativePath' | Should Be $False
+        $Commands -contains 'PauseForWarning' | Should Be $False
+
+        $Commands -contains 'Check-InstalledPrograms' | Should Be $True
+        $Commands -contains 'Get-PackageManagerInstallObjects' | Should Be $True
+        $Commands -contains 'Install-ChocolateyCmdLine' | Should Be $True
+        $Commands -contains 'Install-Program' | Should Be $True
+        $Commands -contains 'Refresh-ChocolateyEnv' | Should Be $True
+        $Commands -contains 'Uninstall-Program' | Should Be $True
+        $Commands -contains 'Update-PackageManagement' | Should Be $True
     }
 
     It "Module '$env:BHProjectName' Private Functions Are Available in Internal Scope" {
@@ -76,8 +78,8 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU0wrgxjH7jA6ab16d1YqNWWtI
-# lrmgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUXih1V3IeGa86JkvE5QT0FaQR
+# XEmgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -134,11 +136,11 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFH8XRQSsWj37NkbB
-# 5qc5UHS0483zMA0GCSqGSIb3DQEBAQUABIIBAAp4fT9QbRlx0ipSezQ67ZJi9pNV
-# PNU4FA4kj5+wMwQdXmWO7m+P8TIuH2mTSe/7B23hIcialr9eVQwrEx4V78ZndIAb
-# RElwttIhc2tpi6Y2riRRZ3s/kSIpSn1cTsQ90berYeA0oi0YJrYoCWmljbDkxQUW
-# 8qc9HWDdJZkeg4nSWS1a++pN9wVTa1/UYKFbSZNXpmrrmK4TdGWIgi94fLBOYDz7
-# v5ZKndgw+apkOAyve800XLT/5RvNInpEfjQA51DL6M0xmb2MS4r3yqnwUKzAixA9
-# jamWEZUxWZfhVLlWGw7zrT4+w7MgSUQRiVrBVmRceswP6g9Mf3cN//hJev4=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFP//2JHxJ+LSaifu
+# 7mb+yIJYnw41MA0GCSqGSIb3DQEBAQUABIIBAF4MCEe7vY2o7t+nJMk52x9+XUJi
+# zvn2wHfKZadcWPzQht9QXCAuAXJ4Bhm14x9o97JDw3MKCNbP6ZsrTorqLzR7u668
+# WgFnlXn5VJnPoDVR2IVbvTHMbjqhuKLv1c8L3/mAiDw9acIROwIzmJDD3zdaE2hS
+# AZwmK0qfATqnbgQ8iz1zjQBoj9st5XPXPt4k020uA2VGTRi4FT99Ty8cisBDKcMD
+# p6sogdzFwA+mlH+LA1yk6pq3h83s1Cnsr+kFsw4aguo2pptnzCY8d0jMa+QStlMO
+# FPB2bjRLl/MqB9qa5C3tsV33MZbAa+pNpjuyxOgMaEdZ/xs7T880zXY1qe8=
 # SIG # End signature block

@@ -244,7 +244,7 @@ function Install-ChocolateyCmdLine {
 
             foreach ($ModName in $ChocoModulesThatRefreshEnvShouldHaveLoaded) {
                 if ($(Get-Module).Name -contains $ModName) {
-                    Write-Host "The $ModName Module has been loaded from $($(Get-Module -Name $ModName).Path)" -ForegroundColor Green
+                    #Write-Host "The $ModName Module has been loaded from $($(Get-Module -Name $ModName).Path)" -ForegroundColor Green
                 }
             }
         }
@@ -259,8 +259,8 @@ function Install-ChocolateyCmdLine {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUwQHT0LY4q1ICzxqCuyZoykSP
-# lHKgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU8sorQISIqRUwduESANwusRyL
+# XNmgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -317,11 +317,11 @@ function Install-ChocolateyCmdLine {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFGIODmUf++4cC+lk
-# dgG5SY6LTPWGMA0GCSqGSIb3DQEBAQUABIIBAHvsUmwbPQgeezX2AfVgZ0NqThsM
-# 8ht/dpkkJ3clC9BUP7AhDz4NEdCyYFGQ0Cc4GcIwSPTbX8Yj9geqxcEW9mQEoMyf
-# 0KgTKRF6ihx/Ly1IxIVxxCh/wVlEMGaPMGzehyKnjQB+XLIu+FL+uKU2BfBE/Rww
-# BeoZ9W5+JwL99u7MuB5hyvaaK+Hkcnh7UQL8QcGCu0VvIh2+yj/txaBQ1aN6b+Qv
-# 95LkLehQxJ1SkokgRqMognwHhbLuefC9zXCleQXWVEL3uGJLoFPqiq3qupQSXVgY
-# h+KfxQemrgEg6N+dUMlg6S75N9hrVgKY/GJ+LD9jsDE89ckerHBVF4mJN6A=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFL5IGC3wzgMt1D8G
+# 4QJVQdCkTZVBMA0GCSqGSIb3DQEBAQUABIIBAG0BD71/ZVpLhRffBSvXmQAP69lT
+# 1NshrqV8e9d4j4fVA9+64nR9cexDvq/8TmiArAQk/r2qZxY5SdrYAsiRuu333Vaq
+# Um6USoJ5VqKq1sBXPfQ7LdgPepd7jguFBNDvKMmHhp0L3OG9CEvl58EB8vsIIE5F
+# p+TPRDlisaMTuQRZNhBfDjyxdpIWB6a961DgYJlPWQljuyO54TOAt9F/LOqy4s3M
+# 5mVVQfgeJ02q+ub2kXrztciaSf8R4ExxxwZmLfGhIS8fstEatYRqXB9J4nvYMbz/
+# cpv5nSNx9mW4aLVDvBrK1oRaJPgl6xJWjqfeJxyt3i5GYKGvJGQ1SIfLxlE=
 # SIG # End signature block

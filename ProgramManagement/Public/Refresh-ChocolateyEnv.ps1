@@ -8,83 +8,93 @@ function Refresh-ChocolateyEnv {
     ##### BEGIN Main Body #####
 
     if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
+        [System.Collections.ArrayList]$PotentialChocolateyPaths = @()
         if ($ChocolateyDirectory) {
-            $ChocolateyPath = $ChocolateyDirectory
+            $null = $PotentialChocolateyPaths.Add($ChocolateyDirectory)
         }
         else {
             if (Test-Path "C:\Chocolatey") {
-                $ChocolateyPath = "C:\Chocolatey"
+                $null = $PotentialChocolateyPaths.Add("C:\Chocolatey")
             }
-            elseif (Test-Path "C:\ProgramData\chocolatey") {
-                $ChocolateyPath = "C:\ProgramData\chocolatey"
-            }
-            else {
-                Write-Error "Neither the Chocolatey PackageProvider nor the Chocolatey CmdLine appears to be installed! Halting!"
-                $global:FunctionResult = "1"
-                return
+            if (Test-Path "C:\ProgramData\chocolatey") {
+                $null = $PotentialChocolateyPaths.Add("C:\ProgramData\chocolatey")
             }
         }
     }
     else {
         $ChocolateyPath = "$($($(Get-Command choco).Source -split "chocolatey")[0])chocolatey"
     }
+    
     [System.Collections.ArrayList]$ChocolateyPathsPrep = @()
     [System.Collections.ArrayList]$ChocolateyPathsToAddToEnvPath = @()
-    if (Test-Path $ChocolateyPath) {
-        $($(Get-ChildItem $ChocolateyPath -Directory | foreach {
-            Get-ChildItem $_.FullName -Recurse -File
-        } | foreach {
-            if ($_.Extension -eq ".exe" -or $_.Extension -eq ".bat") {
-                $_.Directory.FullName
-            }
-        }) | Sort-Object | Get-Unique) | foreach {
-            $null = $ChocolateyPathsPrep.Add($_.Trim("\\"))
-        }
-
-        foreach ($ChocoPath in $ChocolateyPathsPrep) {
-            if ($(Test-Path $ChocoPath) -and $($env:Path -split ";") -notcontains $ChocoPath -and $ChocoPath -ne $null) {
-                $null = $ChocolateyPathsToAddToEnvPath.Add($ChocoPath)
-            }
-        }
-
-        foreach ($ChocoPath in $ChocolateyPathsToAddToEnvPath) {
-            if ($env:Path[-1] -eq ";") {
-                $env:Path = "$env:Path" + $ChocoPath + ";"
-            }
-            else {
-                $env:Path = "$env:Path" + ";" + $ChocoPath
-            }
+    foreach ($PotentialPath in $PotentialChocolateyPaths) {
+        if (Test-Path $PotentialPath) {
+            $($(Get-ChildItem $PotentialPath -Directory | foreach {
+                Get-ChildItem $_.FullName -Recurse -File
+            } | foreach {
+                if ($_.Extension -eq ".exe" -or $_.Extension -eq ".bat") {
+                    $_.Directory.FullName
+                }
+            }) | Sort-Object | Get-Unique) | foreach {
+                $null = $ChocolateyPathsPrep.Add($_.Trim("\\"))
+            }   
         }
     }
-    else {
-        Write-Verbose "Unable to find Chocolatey Path $ChocolateyPath."
+    foreach ($ChocoPath in $ChocolateyPathsPrep) {
+        if ($(Test-Path $ChocoPath) -and $($env:Path -split ";") -notcontains $ChocoPath -and $ChocoPath -ne $null) {
+            $null = $ChocolateyPathsToAddToEnvPath.Add($ChocoPath)
+        }
+    }
+
+    foreach ($ChocoPath in $ChocolateyPathsToAddToEnvPath) {
+        if ($env:Path[-1] -eq ";") {
+            $env:Path = "$env:Path" + $ChocoPath + ";"
+        }
+        else {
+            $env:Path = "$env:Path" + ";" + $ChocoPath
+        }
     }
 
     # Remove any repeats in $env:Path
     $UpdatedEnvPath = $($($($env:Path -split ";") | foreach {
         if (-not [System.String]::IsNullOrWhiteSpace($_)) {
-            $_.Trim("\\")
+            if (Test-Path $_) {
+                $_.Trim("\\")
+            }
         }
     }) | Select-Object -Unique) -join ";"
 
     # Next, find chocolatey-core.psm1, chocolateysetup.psm1, chocolateyInstaller.psm1, and chocolateyProfile.psm1
     # and import them
-    $ChocoCoreModule = $(Get-ChildItem -Path $ChocolateyPath -Recurse -File -Filter "*chocolatey-core.psm1").FullName
-    $ChocoSetupModule = $(Get-ChildItem -Path $ChocolateyPath -Recurse -File -Filter "*chocolateysetup.psm1").FullName
-    $ChocoInstallerModule = $(Get-ChildItem -Path $ChocolateyPath -Recurse -File -Filter "*chocolateyInstaller.psm1").FullName
-    $ChocoProfileModule = $(Get-ChildItem -Path $ChocolateyPath -Recurse -File -Filter "*chocolateyProfile.psm1").FullName
-
-    $ChocoModulesToImportPrep = @($ChocoCoreModule, $ChocoSetupModule, $ChocoInstallerModule, $ChocoProfileModule)
-    [System.Collections.ArrayList]$ChocoModulesToImport = @()
-    foreach ($ModulePath in $ChocoModulesToImportPrep) {
-        if ($ModulePath -ne $null) {
-            $null = $ChocoModulesToImport.Add($ModulePath)
+    [System.Collections.ArrayList]$PotentialHelpersDirItems = @()
+    foreach ($PotentialPath in $PotentialChocolateyPaths) {
+        [array]$HelperDir = Get-ChildItem $PotentialPath -Recurse -Directory -Filter "helpers" | Where-Object {$_.FullName -match "chocolatey\\helpers"}
+        if ($HelperDir.Count -gt 0) {
+            $null = $PotentialHelpersDirItems.Add($HelperDir)
         }
     }
+    if ($PotentialHelpersDirItems.Count -gt 0) {
+        [array]$ChocoHelperDir = $($PotentialHelpersDirItems | Sort-Object -Property LastWriteTime)[-1]
+    }
 
-    foreach ($ModulePath in $ChocoModulesToImport) {
-        Remove-Module -Name $([System.IO.Path]::GetFileNameWithoutExtension($ModulePath)) -ErrorAction SilentlyContinue
-        Import-Module -Name $ModulePath
+    if ($ChocoHelperDirItem -ne $null) {
+        $ChocoCoreModule = $(Get-ChildItem -Path $ChocoHelperDirItem.FullName -Recurse -File -Filter "*chocolatey-core.psm1").FullName
+        $ChocoSetupModule = $(Get-ChildItem -Path $ChocoHelperDirItem.FullName -Recurse -File -Filter "*chocolateysetup.psm1").FullName
+        $ChocoInstallerModule = $(Get-ChildItem -Path $ChocoHelperDirItem.FullName -Recurse -File -Filter "*chocolateyInstaller.psm1").FullName
+        $ChocoProfileModule = $(Get-ChildItem -Path $ChocoHelperDirItem.FullName -Recurse -File -Filter "*chocolateyProfile.psm1").FullName
+
+        $ChocoModulesToImportPrep = @($ChocoCoreModule, $ChocoSetupModule, $ChocoInstallerModule, $ChocoProfileModule)
+        [System.Collections.ArrayList]$ChocoModulesToImport = @()
+        foreach ($ModulePath in $ChocoModulesToImportPrep) {
+            if ($ModulePath -ne $null) {
+                $null = $ChocoModulesToImport.Add($ModulePath)
+            }
+        }
+
+        foreach ($ModulePath in $ChocoModulesToImport) {
+            Remove-Module -Name $([System.IO.Path]::GetFileNameWithoutExtension($ModulePath)) -ErrorAction SilentlyContinue
+            Import-Module -Name $ModulePath
+        }
     }
 
     $UpdatedEnvPath
@@ -96,8 +106,8 @@ function Refresh-ChocolateyEnv {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUlkbR2viuy7I304zf8x6YaMw/
-# 70Ggggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUdwmzUn7JTlW4cSlmI/vfoQM5
+# Kiqgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -154,11 +164,11 @@ function Refresh-ChocolateyEnv {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFDl5j5E+5P5CvcWn
-# QoPewiPkU5WvMA0GCSqGSIb3DQEBAQUABIIBAJKBovHslZeJtHr8erhJ63OASHOk
-# O4R5pDMGzeR2HLqlV2z0hdKWIXz/L64EYRD3IkhyPMkumdNOVx3kMT8f7T0B27l1
-# vTkKxcFNy6a8m/tALf5B+A5t0IFtJdPiZdmr3+s6WdGYvTk7vDU94uklt9jkSz/b
-# X6Gik0G8JeW02sIiEg+fR1dnTwB/1YS68gUxiObo6FsybSzWdI2HUaI4quy9A5CN
-# sO/i3EdLKooHhpUJeWXn6ewjF/LXB2/L0kmoNFi1bqJjEXlsnHEhZCMWxzETRS83
-# ELXGJJ53sk+xsnLkBd21fjq6isWSyXQ0Q6ZWIHn5e+GR9k5JXKIMmbrKwgA=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFF+Ky5VYoOD8nf4h
+# qwDqp4HOwcYWMA0GCSqGSIb3DQEBAQUABIIBACd9+TPMKjn9UMtKfx8U44O4yT4m
+# lLYsXfvqfGws4iyvEmpgRTCS0+h8J88ghZzk/GwoGn+pq9mo94GZ/1IyZyvCqK+W
+# fQ+7DarBFGUZFICV/ZjvMsDnHrRz81MpUNlbRxtR/x7e+A3JxaXuJE98CSb6O/3K
+# 6nd3m0oYOX+pEJZezQQqS/MmCiufmUpy3RI7ZZjqrj6wG3r/uWtAnL2LXDlL5jk8
+# alpnm8juH5HNKvTifDNdN3RGOB8nuuh1hm7p+JSdxOJ8G4IpefHOFIaDf/+lxXzs
+# ljeUcxHXkeFbKskwnmlR+uIng1VHE97w/2llJi2Z6V99UXS/weJ70ZknW2I=
 # SIG # End signature block

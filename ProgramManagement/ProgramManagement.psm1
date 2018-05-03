@@ -469,7 +469,7 @@ function Install-ChocolateyCmdLine {
 
             foreach ($ModName in $ChocoModulesThatRefreshEnvShouldHaveLoaded) {
                 if ($(Get-Module).Name -contains $ModName) {
-                    Write-Host "The $ModName Module has been loaded from $($(Get-Module -Name $ModName).Path)" -ForegroundColor Green
+                    #Write-Host "The $ModName Module has been loaded from $($(Get-Module -Name $ModName).Path)" -ForegroundColor Green
                 }
             }
         }
@@ -985,7 +985,7 @@ function Install-Program {
             if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
                 try {
                     $global:FunctionResult = "0"
-                    $null = Install-ChocolateyCmdLine -NoUpdatePackageManagement -ErrorAction SilentlyContinue -ErrorVariable ICCErr
+                    $null = Install-ChocolateyCmdLine -NoUpdatePackageManagement -ErrorAction SilentlyContinue -ErrorVariable ICCErr -WarningAction SilentlyContinue
                     if ($ICCErr -and $global:FunctionResult -eq "1") {throw "The Install-ChocolateyCmdLine function failed! Halting!"}
                 }
                 catch {
@@ -1002,10 +1002,36 @@ function Install-Program {
                 # we shouldn't. But I'm not sure what all of the possibilities are so I can't
                 # control for them...
                 if ($PreRelease) {
-                    $null = cup $ProgramName --pre -y
+                    $Arguments = "$ProgramName --pre -y"
                 }
                 else {
-                    $null = cup $ProgramName -y
+                    $Arguments = "$ProgramName -y"
+                }
+                
+                $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
+                #$ProcessInfo.WorkingDirectory = $BinaryPath | Split-Path -Parent
+                $ProcessInfo.FileName = $(Get-Command cup).Source
+                $ProcessInfo.RedirectStandardError = $true
+                $ProcessInfo.RedirectStandardOutput = $true
+                $ProcessInfo.UseShellExecute = $false
+                $ProcessInfo.Arguments = $Arguments
+                $Process = New-Object System.Diagnostics.Process
+                $Process.StartInfo = $ProcessInfo
+                $Process.Start() | Out-Null
+                # Below $FinishedInAlottedTime returns boolean true/false
+                # Give it 60 seconds to finish installing, otherwise, kill choco.exe
+                $FinishedInAlottedTime = $Process.WaitForExit(60000)
+                if (!$FinishedInAlottedTime) {
+                    $Process.Kill()
+                }
+                $stdout = $Process.StandardOutput.ReadToEnd()
+                $stderr = $Process.StandardError.ReadToEnd()
+                $AllOutput = $stdout + $stderr
+                
+                if ($(clist --local-only $ProgramName)[1] -notmatch $ProgramName) {
+                    Write-Error "There was a problem installing the program '$ProgramName' via 'cup $Arguments'! Halting!"
+                    $global:FunctionResult = "1"
+                    return
                 }
                 $ChocoInstall = $true
 
@@ -1079,7 +1105,7 @@ function Install-Program {
                 # Chocolatey Package Provider/Repo. So try running that...
                 if ($ChocoInstall) {
                     if (![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue)) {
-                        Write-Warning "Unable to find main executable for $ProgramName!"
+                        #Write-Warning "Unable to find main executable for $ProgramName!"
                         $MainExeSearchFail = $True
                     }
                 }
@@ -1122,10 +1148,10 @@ function Install-Program {
                             elseif (Test-Path "C:\Chocolatey") {
                                 $ChocoPath = "C:\Chocolatey"
                             }
-                            $ChocoInstallerModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "openssh" -and $_.FullName -match "chocolateyinstaller\.psm1"}
-                            $ChocoProfileModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "openssh" -and $_.FullName -match "chocolateyProfile\.psm1"}
-                            $ChocoScriptRunnerFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "openssh" -and $_.FullName -match "chocolateyScriptRunner\.ps1"}
-                            $ChocoTabExpansionFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "openssh" -and $_.FullName -match "chocolateyTabExpansion\.ps1"}
+                            $ChocoInstallerModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match $ProgramName -and $_.FullName -match "chocolateyinstaller\.psm1"}
+                            $ChocoProfileModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match $ProgramName -and $_.FullName -match "chocolateyProfile\.psm1"}
+                            $ChocoScriptRunnerFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match $ProgramName -and $_.FullName -match "chocolateyScriptRunner\.ps1"}
+                            $ChocoTabExpansionFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match $ProgramName -and $_.FullName -match "chocolateyTabExpansion\.ps1"}
                             if ($ChocoInstallerModuleFileItem) {
                                 Import-Module $ChocoInstallerModuleFileItem.FullName -ErrorAction SilentlyContinue
                                 $ChocoHelpersDir = $ChocoInstallerModuleFileItem.Directory
@@ -1142,7 +1168,9 @@ function Install-Program {
                             }
                             
                             # Run the install script
-                            $null = & $ChocolateyInstallScript
+                            $tempfile = [IO.Path]::Combine([IO.Path]::GetTempPath(), [IO.Path]::GetRandomFileName())
+                            $null = & $ChocolateyInstallScript *>&1 | Out-File $tempfile
+                            if (Test-Path $tempfile) {Remove-Item $tempfile -Force}
 
                             # Now that the $ChocolateyInstallScript ran, search for the main executable again
                             Synchronize-SystemPathEnvPath
@@ -1157,7 +1185,7 @@ function Install-Program {
 
                             # If we STILL don't have $ExePath, then we have to give up...
                             if (!$ExePath -or $ExePath.Count -eq 0) {
-                                Write-Warning "Unable to find main executable for $ProgramName!"
+                                #Write-Warning "Unable to find main executable for $ProgramName!"
                                 $MainExeSearchFail = $True
                             }
                         }
@@ -1224,9 +1252,11 @@ function Install-Program {
 
     # If we weren't able to find the main executable (or any potential main executables) for
     # $ProgramName, offer the option to scan the whole C:\ drive (with some obvious exceptions)
-    if ($MainExeSearchFail -and $($ResolveCommandPath -or $PSBoundParameters['CommandName']) -and
-    ![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue)) {
-        if (!$ScanCDriveForMainExeIfNecessary -and $ResolveCommandPath -and !$PSBoundParameters['CommandName']) {
+    if ($MainExeSearchFail -and
+    $($ResolveCommandPath -or $PSBoundParameters['CommandName'] -or $PSBoundParameters['ScanCDriveForMainExeIfNecessary']) -and
+    ![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue)
+    ) {
+        if (!$ScanCDriveForMainExeIfNecessary -and !$ResolveCommandPath -and !$PSBoundParameters['CommandName']) {
             $ScanCDriveChoice = Read-Host -Prompt "Would you like to scan C:\ for $FinalCommandName.exe? NOTE: This search excludes system directories but still could take some time. [Yes\No]"
             while ($ScanCDriveChoice -notmatch "Yes|yes|Y|y|No|no|N|n") {
                 Write-Host "$ScanDriveChoice is not a valid input. Please enter 'Yes' or 'No'"
@@ -1234,12 +1264,22 @@ function Install-Program {
             }
         }
 
-        if ($ScanCDriveChoice -match "Yes|yes|Y|y" -or $ScanCDriveForMainExeIfNecessary) {
+        if ($ScanCDriveChoice -match "Yes|yes|Y|y" -or $ScanCDriveForMainExeIfNecessary -or $ResolveCommandPath -or $PSBoundParameters['CommandName']) {
             $DirectoriesToSearchRecursively = $(Get-ChildItem -Path "C:\" -Directory | Where-Object {$_.Name -notmatch "Windows|PerfLogs|Microsoft"}).FullName
             [System.Collections.ArrayList]$ExePath = @()
+            # Try to find a directory that matches the $ProgramName
+            [System.Collections.ArrayList]$FoundMatchingDirs = @()
             foreach ($dir in $DirectoriesToSearchRecursively) {
-                $FoundFiles = $(Get-ChildItem -Path $dir -Recurse -File).FullName
-                foreach ($FilePath in $FoundFiles) {
+                $DirectoriesIndex = Get-ChildItem -Path $dir -Recurse -Directory
+                foreach ($subdirItem in $DirectoriesIndex) {
+                    if ($subdirItem.FullName -match $ProgramName) {
+                        $null = $FoundMatchingDirs.Add($subdiritem)
+                    }
+                }
+            }
+            foreach ($MatchingDirItem in $FoundMatchingDirs) {
+                $FilesIndex = Get-ChildItem -Path $MatchingDirItem.FullName -Recurse -File
+                foreach ($FilePath in $FilesIndex.Fullname) {
                     if ($FilePath -match "(.*?)$FinalCommandName([^\\]+)") {
                         $null = $ExePath.Add($FilePath)
                     }
@@ -1252,14 +1292,7 @@ function Install-Program {
         # Finalize $env:Path
         if ([bool]$($ExePath -match "\\$FinalCommandName.exe$")) {
             $PathToAdd = $($ExePath -match "\\$FinalCommandName.exe$") | Split-Path -Parent
-            if ($($env:Path -split ";") -notcontains $PathToAdd) {
-                if ($env:Path[-1] -eq ";") {
-                    $env:Path = "$env:Path" + $PathToAdd + ";"
-                }
-                else {
-                    $env:Path = "$env:Path" + ";" + $PathToAdd
-                }
-            }
+            $env:Path = $PathToAdd + ";" + $env:Path
         }
         $FinalEnvPathArray = $env:Path -split ";" | foreach {if(-not [System.String]::IsNullOrWhiteSpace($_)) {$_}}
         $FinalEnvPathString = $($FinalEnvPathArray | foreach {if (Test-Path $_) {$_}}) -join ";"
@@ -1268,6 +1301,7 @@ function Install-Program {
         if (![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue)) {
             # Try to determine Main Executable
             if (!$ExePath -or $ExePath.Count -eq 0) {
+                Write-Warning "Unable to find main executable for $ProgramName!"
                 $FinalExeLocation = "NotFound"
             }
             elseif ($ExePath.Count -eq 1) {
@@ -1277,14 +1311,14 @@ function Install-Program {
                     $FinalExeLocation = $(Get-Command $UpdatedFinalCommandName -ErrorAction SilentlyContinue).Source
                 }
                 catch {
-                    $FinalExeLocation = $ExePath
+                    $FinalExeLocation = $ExePath | Where-Object {$($_ | Split-Path -Leaf) -match "\.exe$"}
                 }
             }
             elseif ($ExePath.Count -gt 1) {
                 if (![bool]$($ExePath -match "\\$FinalCommandName.exe$")) {
                     Write-Warning "No exact match for main executable $FinalCommandName.exe was found. However, other executables associated with $ProgramName were found."
                 }
-                $FinalExeLocation = $ExePath
+                $FinalExeLocation = $ExePath | Where-Object {$($_ | Split-Path -Leaf) -match "\.exe$"}
             }
         }
         else {
@@ -1319,16 +1353,23 @@ function Install-Program {
 
     Write-Host "The program '$ProgramName' was installed successfully!" -ForegroundColor Green
 
-    [pscustomobject]@{
+    $OutputHT = [ordered]@{
         InstallManager      = $InstallManager
         InstallAction       = $InstallAction
         InstallCheck        = $InstallCheck
-        MainExecutable      = $FinalExeLocation
-        OriginalSystemPath  = $OriginalSystemPath
-        CurrentSystemPath   = $(Get-ItemProperty -Path 'Registry::HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Session Manager\Environment' -Name PATH).Path
-        OriginalEnvPath     = $OriginalEnvPath
-        CurrentEnvPath      = $env:Path
     }
+    if ([array]$($FinalExeLocation).Count -gt 1) {
+        $OutputHT.Add("PossibleMainExecutables",$FinalExeLocation)
+    }
+    else {
+        $OutputHT.Add("MainExecutable",$FinalExeLocation)
+    }
+    $OutputHT.Add("OriginalSystemPath",$OriginalSystemPath)
+    $OutputHT.Add("CurrentSystemPath",$(Get-ItemProperty -Path 'Registry::HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Session Manager\Environment' -Name PATH).Path)
+    $OutputHT.Add("OriginalEnvPath",$OriginalEnvPath)
+    $OutputHT.Add("CurrentEnvPath",$env:Path)
+    
+    [pscustomobject]$OutputHT
 
     ##### END Main Body #####
 }
@@ -1344,83 +1385,93 @@ function Refresh-ChocolateyEnv {
     ##### BEGIN Main Body #####
 
     if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
+        [System.Collections.ArrayList]$PotentialChocolateyPaths = @()
         if ($ChocolateyDirectory) {
-            $ChocolateyPath = $ChocolateyDirectory
+            $null = $PotentialChocolateyPaths.Add($ChocolateyDirectory)
         }
         else {
             if (Test-Path "C:\Chocolatey") {
-                $ChocolateyPath = "C:\Chocolatey"
+                $null = $PotentialChocolateyPaths.Add("C:\Chocolatey")
             }
-            elseif (Test-Path "C:\ProgramData\chocolatey") {
-                $ChocolateyPath = "C:\ProgramData\chocolatey"
-            }
-            else {
-                Write-Error "Neither the Chocolatey PackageProvider nor the Chocolatey CmdLine appears to be installed! Halting!"
-                $global:FunctionResult = "1"
-                return
+            if (Test-Path "C:\ProgramData\chocolatey") {
+                $null = $PotentialChocolateyPaths.Add("C:\ProgramData\chocolatey")
             }
         }
     }
     else {
         $ChocolateyPath = "$($($(Get-Command choco).Source -split "chocolatey")[0])chocolatey"
     }
+    
     [System.Collections.ArrayList]$ChocolateyPathsPrep = @()
     [System.Collections.ArrayList]$ChocolateyPathsToAddToEnvPath = @()
-    if (Test-Path $ChocolateyPath) {
-        $($(Get-ChildItem $ChocolateyPath -Directory | foreach {
-            Get-ChildItem $_.FullName -Recurse -File
-        } | foreach {
-            if ($_.Extension -eq ".exe" -or $_.Extension -eq ".bat") {
-                $_.Directory.FullName
-            }
-        }) | Sort-Object | Get-Unique) | foreach {
-            $null = $ChocolateyPathsPrep.Add($_.Trim("\\"))
-        }
-
-        foreach ($ChocoPath in $ChocolateyPathsPrep) {
-            if ($(Test-Path $ChocoPath) -and $($env:Path -split ";") -notcontains $ChocoPath -and $ChocoPath -ne $null) {
-                $null = $ChocolateyPathsToAddToEnvPath.Add($ChocoPath)
-            }
-        }
-
-        foreach ($ChocoPath in $ChocolateyPathsToAddToEnvPath) {
-            if ($env:Path[-1] -eq ";") {
-                $env:Path = "$env:Path" + $ChocoPath + ";"
-            }
-            else {
-                $env:Path = "$env:Path" + ";" + $ChocoPath
-            }
+    foreach ($PotentialPath in $PotentialChocolateyPaths) {
+        if (Test-Path $PotentialPath) {
+            $($(Get-ChildItem $PotentialPath -Directory | foreach {
+                Get-ChildItem $_.FullName -Recurse -File
+            } | foreach {
+                if ($_.Extension -eq ".exe" -or $_.Extension -eq ".bat") {
+                    $_.Directory.FullName
+                }
+            }) | Sort-Object | Get-Unique) | foreach {
+                $null = $ChocolateyPathsPrep.Add($_.Trim("\\"))
+            }   
         }
     }
-    else {
-        Write-Verbose "Unable to find Chocolatey Path $ChocolateyPath."
+    foreach ($ChocoPath in $ChocolateyPathsPrep) {
+        if ($(Test-Path $ChocoPath) -and $($env:Path -split ";") -notcontains $ChocoPath -and $ChocoPath -ne $null) {
+            $null = $ChocolateyPathsToAddToEnvPath.Add($ChocoPath)
+        }
+    }
+
+    foreach ($ChocoPath in $ChocolateyPathsToAddToEnvPath) {
+        if ($env:Path[-1] -eq ";") {
+            $env:Path = "$env:Path" + $ChocoPath + ";"
+        }
+        else {
+            $env:Path = "$env:Path" + ";" + $ChocoPath
+        }
     }
 
     # Remove any repeats in $env:Path
     $UpdatedEnvPath = $($($($env:Path -split ";") | foreach {
         if (-not [System.String]::IsNullOrWhiteSpace($_)) {
-            $_.Trim("\\")
+            if (Test-Path $_) {
+                $_.Trim("\\")
+            }
         }
     }) | Select-Object -Unique) -join ";"
 
     # Next, find chocolatey-core.psm1, chocolateysetup.psm1, chocolateyInstaller.psm1, and chocolateyProfile.psm1
     # and import them
-    $ChocoCoreModule = $(Get-ChildItem -Path $ChocolateyPath -Recurse -File -Filter "*chocolatey-core.psm1").FullName
-    $ChocoSetupModule = $(Get-ChildItem -Path $ChocolateyPath -Recurse -File -Filter "*chocolateysetup.psm1").FullName
-    $ChocoInstallerModule = $(Get-ChildItem -Path $ChocolateyPath -Recurse -File -Filter "*chocolateyInstaller.psm1").FullName
-    $ChocoProfileModule = $(Get-ChildItem -Path $ChocolateyPath -Recurse -File -Filter "*chocolateyProfile.psm1").FullName
-
-    $ChocoModulesToImportPrep = @($ChocoCoreModule, $ChocoSetupModule, $ChocoInstallerModule, $ChocoProfileModule)
-    [System.Collections.ArrayList]$ChocoModulesToImport = @()
-    foreach ($ModulePath in $ChocoModulesToImportPrep) {
-        if ($ModulePath -ne $null) {
-            $null = $ChocoModulesToImport.Add($ModulePath)
+    [System.Collections.ArrayList]$PotentialHelpersDirItems = @()
+    foreach ($PotentialPath in $PotentialChocolateyPaths) {
+        [array]$HelperDir = Get-ChildItem $PotentialPath -Recurse -Directory -Filter "helpers" | Where-Object {$_.FullName -match "chocolatey\\helpers"}
+        if ($HelperDir.Count -gt 0) {
+            $null = $PotentialHelpersDirItems.Add($HelperDir)
         }
     }
+    if ($PotentialHelpersDirItems.Count -gt 0) {
+        [array]$ChocoHelperDir = $($PotentialHelpersDirItems | Sort-Object -Property LastWriteTime)[-1]
+    }
 
-    foreach ($ModulePath in $ChocoModulesToImport) {
-        Remove-Module -Name $([System.IO.Path]::GetFileNameWithoutExtension($ModulePath)) -ErrorAction SilentlyContinue
-        Import-Module -Name $ModulePath
+    if ($ChocoHelperDirItem -ne $null) {
+        $ChocoCoreModule = $(Get-ChildItem -Path $ChocoHelperDirItem.FullName -Recurse -File -Filter "*chocolatey-core.psm1").FullName
+        $ChocoSetupModule = $(Get-ChildItem -Path $ChocoHelperDirItem.FullName -Recurse -File -Filter "*chocolateysetup.psm1").FullName
+        $ChocoInstallerModule = $(Get-ChildItem -Path $ChocoHelperDirItem.FullName -Recurse -File -Filter "*chocolateyInstaller.psm1").FullName
+        $ChocoProfileModule = $(Get-ChildItem -Path $ChocoHelperDirItem.FullName -Recurse -File -Filter "*chocolateyProfile.psm1").FullName
+
+        $ChocoModulesToImportPrep = @($ChocoCoreModule, $ChocoSetupModule, $ChocoInstallerModule, $ChocoProfileModule)
+        [System.Collections.ArrayList]$ChocoModulesToImport = @()
+        foreach ($ModulePath in $ChocoModulesToImportPrep) {
+            if ($ModulePath -ne $null) {
+                $null = $ChocoModulesToImport.Add($ModulePath)
+            }
+        }
+
+        foreach ($ModulePath in $ChocoModulesToImport) {
+            Remove-Module -Name $([System.IO.Path]::GetFileNameWithoutExtension($ModulePath)) -ErrorAction SilentlyContinue
+            Import-Module -Name $ModulePath
+        }
     }
 
     $UpdatedEnvPath
@@ -2124,8 +2175,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUOD1Ssew5Mea0zZW8kYWRlFuV
-# 1K+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUc3lhm1oCv8agpEngqQRRpKLz
+# bJagggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -2182,11 +2233,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFBY3fTZcXDJoUAeY
-# xbVVrwdF4+wNMA0GCSqGSIb3DQEBAQUABIIBAAaxhQbaP0gmuRJlNJLUDhfLxvAu
-# TFI5OF24bhp/qqipSEAMktRqruoVeidUYskeYWMywjOUVrPYO2hO3ilbfXi3y9CH
-# VUgwZcq58SIdDh/rujR0uYfwHHABMq01f2mpXcwbMTMAdijlOevwmAAXHawPQvHc
-# LyrptKWDXVxH/n7gwJi0OhKxuLY9bEpgnOjbw/8U9pdeM2388XO9DUMkzDd7KC4K
-# Rjghu5CKdbh1VM3S0WEIAW7MaSDKPpk7u9hAoKV/dKqiEKpq0va+5c9DkHKUs9Pn
-# 6rSBjaxOGEFLXo3x3+BF8ufbkM4hLW3x477U3mn/IqvEA6D7kWo+MWvuKjo=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFBw8Hh3BzuC1bbyw
+# NWrFOnIeshVRMA0GCSqGSIb3DQEBAQUABIIBAIvbc3Alnj1lwj8c2kDTebHLrtch
+# Nkr/S+jID+uJ8Nw+7x86zznbpVGct+BdeDk4mRw0IystDkwVdIH6iTAybejjdzGe
+# OoRPWD3IsedWwAvfLRzeRxXuiui4V3KnWkI8Qu2uoLYnhoMW9Q7A3sTaoG0Z0eHk
+# cIq0sADd+821cg5zx/sgF8LKX1yGFcVUfWr7yU8WK/BLfUAvCAlUL0jZFEa9Dvvb
+# FJm+uCML8qom8QtgkffI9iuA9StcR2tkREAnCIBDCiOZVAmFkXpvBeKkKZiCWxWF
+# ApaHpVjzaeyzEMxA96D3uFZXX64SNOITkXnn4sNH8bZPog5BoxRjJImMpnA=
 # SIG # End signature block

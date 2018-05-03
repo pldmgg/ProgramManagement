@@ -501,7 +501,7 @@ function Install-Program {
             if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
                 try {
                     $global:FunctionResult = "0"
-                    $null = Install-ChocolateyCmdLine -NoUpdatePackageManagement -ErrorAction SilentlyContinue -ErrorVariable ICCErr
+                    $null = Install-ChocolateyCmdLine -NoUpdatePackageManagement -ErrorAction SilentlyContinue -ErrorVariable ICCErr -WarningAction SilentlyContinue
                     if ($ICCErr -and $global:FunctionResult -eq "1") {throw "The Install-ChocolateyCmdLine function failed! Halting!"}
                 }
                 catch {
@@ -518,10 +518,36 @@ function Install-Program {
                 # we shouldn't. But I'm not sure what all of the possibilities are so I can't
                 # control for them...
                 if ($PreRelease) {
-                    $null = cup $ProgramName --pre -y
+                    $Arguments = "$ProgramName --pre -y"
                 }
                 else {
-                    $null = cup $ProgramName -y
+                    $Arguments = "$ProgramName -y"
+                }
+                
+                $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
+                #$ProcessInfo.WorkingDirectory = $BinaryPath | Split-Path -Parent
+                $ProcessInfo.FileName = $(Get-Command cup).Source
+                $ProcessInfo.RedirectStandardError = $true
+                $ProcessInfo.RedirectStandardOutput = $true
+                $ProcessInfo.UseShellExecute = $false
+                $ProcessInfo.Arguments = $Arguments
+                $Process = New-Object System.Diagnostics.Process
+                $Process.StartInfo = $ProcessInfo
+                $Process.Start() | Out-Null
+                # Below $FinishedInAlottedTime returns boolean true/false
+                # Give it 60 seconds to finish installing, otherwise, kill choco.exe
+                $FinishedInAlottedTime = $Process.WaitForExit(60000)
+                if (!$FinishedInAlottedTime) {
+                    $Process.Kill()
+                }
+                $stdout = $Process.StandardOutput.ReadToEnd()
+                $stderr = $Process.StandardError.ReadToEnd()
+                $AllOutput = $stdout + $stderr
+                
+                if ($(clist --local-only $ProgramName)[1] -notmatch $ProgramName) {
+                    Write-Error "There was a problem installing the program '$ProgramName' via 'cup $Arguments'! Halting!"
+                    $global:FunctionResult = "1"
+                    return
                 }
                 $ChocoInstall = $true
 
@@ -595,7 +621,7 @@ function Install-Program {
                 # Chocolatey Package Provider/Repo. So try running that...
                 if ($ChocoInstall) {
                     if (![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue)) {
-                        Write-Warning "Unable to find main executable for $ProgramName!"
+                        #Write-Warning "Unable to find main executable for $ProgramName!"
                         $MainExeSearchFail = $True
                     }
                 }
@@ -638,10 +664,10 @@ function Install-Program {
                             elseif (Test-Path "C:\Chocolatey") {
                                 $ChocoPath = "C:\Chocolatey"
                             }
-                            $ChocoInstallerModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "openssh" -and $_.FullName -match "chocolateyinstaller\.psm1"}
-                            $ChocoProfileModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "openssh" -and $_.FullName -match "chocolateyProfile\.psm1"}
-                            $ChocoScriptRunnerFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "openssh" -and $_.FullName -match "chocolateyScriptRunner\.ps1"}
-                            $ChocoTabExpansionFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "openssh" -and $_.FullName -match "chocolateyTabExpansion\.ps1"}
+                            $ChocoInstallerModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match $ProgramName -and $_.FullName -match "chocolateyinstaller\.psm1"}
+                            $ChocoProfileModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match $ProgramName -and $_.FullName -match "chocolateyProfile\.psm1"}
+                            $ChocoScriptRunnerFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match $ProgramName -and $_.FullName -match "chocolateyScriptRunner\.ps1"}
+                            $ChocoTabExpansionFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match $ProgramName -and $_.FullName -match "chocolateyTabExpansion\.ps1"}
                             if ($ChocoInstallerModuleFileItem) {
                                 Import-Module $ChocoInstallerModuleFileItem.FullName -ErrorAction SilentlyContinue
                                 $ChocoHelpersDir = $ChocoInstallerModuleFileItem.Directory
@@ -658,7 +684,9 @@ function Install-Program {
                             }
                             
                             # Run the install script
-                            $null = & $ChocolateyInstallScript
+                            $tempfile = [IO.Path]::Combine([IO.Path]::GetTempPath(), [IO.Path]::GetRandomFileName())
+                            $null = & $ChocolateyInstallScript *>&1 | Out-File $tempfile
+                            if (Test-Path $tempfile) {Remove-Item $tempfile -Force}
 
                             # Now that the $ChocolateyInstallScript ran, search for the main executable again
                             Synchronize-SystemPathEnvPath
@@ -673,7 +701,7 @@ function Install-Program {
 
                             # If we STILL don't have $ExePath, then we have to give up...
                             if (!$ExePath -or $ExePath.Count -eq 0) {
-                                Write-Warning "Unable to find main executable for $ProgramName!"
+                                #Write-Warning "Unable to find main executable for $ProgramName!"
                                 $MainExeSearchFail = $True
                             }
                         }
@@ -740,9 +768,11 @@ function Install-Program {
 
     # If we weren't able to find the main executable (or any potential main executables) for
     # $ProgramName, offer the option to scan the whole C:\ drive (with some obvious exceptions)
-    if ($MainExeSearchFail -and $($ResolveCommandPath -or $PSBoundParameters['CommandName']) -and
-    ![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue)) {
-        if (!$ScanCDriveForMainExeIfNecessary -and $ResolveCommandPath -and !$PSBoundParameters['CommandName']) {
+    if ($MainExeSearchFail -and
+    $($ResolveCommandPath -or $PSBoundParameters['CommandName'] -or $PSBoundParameters['ScanCDriveForMainExeIfNecessary']) -and
+    ![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue)
+    ) {
+        if (!$ScanCDriveForMainExeIfNecessary -and !$ResolveCommandPath -and !$PSBoundParameters['CommandName']) {
             $ScanCDriveChoice = Read-Host -Prompt "Would you like to scan C:\ for $FinalCommandName.exe? NOTE: This search excludes system directories but still could take some time. [Yes\No]"
             while ($ScanCDriveChoice -notmatch "Yes|yes|Y|y|No|no|N|n") {
                 Write-Host "$ScanDriveChoice is not a valid input. Please enter 'Yes' or 'No'"
@@ -750,12 +780,22 @@ function Install-Program {
             }
         }
 
-        if ($ScanCDriveChoice -match "Yes|yes|Y|y" -or $ScanCDriveForMainExeIfNecessary) {
+        if ($ScanCDriveChoice -match "Yes|yes|Y|y" -or $ScanCDriveForMainExeIfNecessary -or $ResolveCommandPath -or $PSBoundParameters['CommandName']) {
             $DirectoriesToSearchRecursively = $(Get-ChildItem -Path "C:\" -Directory | Where-Object {$_.Name -notmatch "Windows|PerfLogs|Microsoft"}).FullName
             [System.Collections.ArrayList]$ExePath = @()
+            # Try to find a directory that matches the $ProgramName
+            [System.Collections.ArrayList]$FoundMatchingDirs = @()
             foreach ($dir in $DirectoriesToSearchRecursively) {
-                $FoundFiles = $(Get-ChildItem -Path $dir -Recurse -File).FullName
-                foreach ($FilePath in $FoundFiles) {
+                $DirectoriesIndex = Get-ChildItem -Path $dir -Recurse -Directory
+                foreach ($subdirItem in $DirectoriesIndex) {
+                    if ($subdirItem.FullName -match $ProgramName) {
+                        $null = $FoundMatchingDirs.Add($subdiritem)
+                    }
+                }
+            }
+            foreach ($MatchingDirItem in $FoundMatchingDirs) {
+                $FilesIndex = Get-ChildItem -Path $MatchingDirItem.FullName -Recurse -File
+                foreach ($FilePath in $FilesIndex.Fullname) {
                     if ($FilePath -match "(.*?)$FinalCommandName([^\\]+)") {
                         $null = $ExePath.Add($FilePath)
                     }
@@ -768,14 +808,7 @@ function Install-Program {
         # Finalize $env:Path
         if ([bool]$($ExePath -match "\\$FinalCommandName.exe$")) {
             $PathToAdd = $($ExePath -match "\\$FinalCommandName.exe$") | Split-Path -Parent
-            if ($($env:Path -split ";") -notcontains $PathToAdd) {
-                if ($env:Path[-1] -eq ";") {
-                    $env:Path = "$env:Path" + $PathToAdd + ";"
-                }
-                else {
-                    $env:Path = "$env:Path" + ";" + $PathToAdd
-                }
-            }
+            $env:Path = $PathToAdd + ";" + $env:Path
         }
         $FinalEnvPathArray = $env:Path -split ";" | foreach {if(-not [System.String]::IsNullOrWhiteSpace($_)) {$_}}
         $FinalEnvPathString = $($FinalEnvPathArray | foreach {if (Test-Path $_) {$_}}) -join ";"
@@ -784,6 +817,7 @@ function Install-Program {
         if (![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue)) {
             # Try to determine Main Executable
             if (!$ExePath -or $ExePath.Count -eq 0) {
+                Write-Warning "Unable to find main executable for $ProgramName!"
                 $FinalExeLocation = "NotFound"
             }
             elseif ($ExePath.Count -eq 1) {
@@ -793,14 +827,14 @@ function Install-Program {
                     $FinalExeLocation = $(Get-Command $UpdatedFinalCommandName -ErrorAction SilentlyContinue).Source
                 }
                 catch {
-                    $FinalExeLocation = $ExePath
+                    $FinalExeLocation = $ExePath | Where-Object {$($_ | Split-Path -Leaf) -match "\.exe$"}
                 }
             }
             elseif ($ExePath.Count -gt 1) {
                 if (![bool]$($ExePath -match "\\$FinalCommandName.exe$")) {
                     Write-Warning "No exact match for main executable $FinalCommandName.exe was found. However, other executables associated with $ProgramName were found."
                 }
-                $FinalExeLocation = $ExePath
+                $FinalExeLocation = $ExePath | Where-Object {$($_ | Split-Path -Leaf) -match "\.exe$"}
             }
         }
         else {
@@ -835,16 +869,23 @@ function Install-Program {
 
     Write-Host "The program '$ProgramName' was installed successfully!" -ForegroundColor Green
 
-    [pscustomobject]@{
+    $OutputHT = [ordered]@{
         InstallManager      = $InstallManager
         InstallAction       = $InstallAction
         InstallCheck        = $InstallCheck
-        MainExecutable      = $FinalExeLocation
-        OriginalSystemPath  = $OriginalSystemPath
-        CurrentSystemPath   = $(Get-ItemProperty -Path 'Registry::HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Session Manager\Environment' -Name PATH).Path
-        OriginalEnvPath     = $OriginalEnvPath
-        CurrentEnvPath      = $env:Path
     }
+    if ([array]$($FinalExeLocation).Count -gt 1) {
+        $OutputHT.Add("PossibleMainExecutables",$FinalExeLocation)
+    }
+    else {
+        $OutputHT.Add("MainExecutable",$FinalExeLocation)
+    }
+    $OutputHT.Add("OriginalSystemPath",$OriginalSystemPath)
+    $OutputHT.Add("CurrentSystemPath",$(Get-ItemProperty -Path 'Registry::HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Session Manager\Environment' -Name PATH).Path)
+    $OutputHT.Add("OriginalEnvPath",$OriginalEnvPath)
+    $OutputHT.Add("CurrentEnvPath",$env:Path)
+    
+    [pscustomobject]$OutputHT
 
     ##### END Main Body #####
 }
@@ -852,8 +893,8 @@ function Install-Program {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUGDV7jbizYO5fNIdIUfANco6Y
-# rAqgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQURxVU6S9i1cKHuI+K8zOCGS/h
+# wW+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -910,11 +951,11 @@ function Install-Program {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFOrog6Rv6A0/AZES
-# vDd4FHTDfIgoMA0GCSqGSIb3DQEBAQUABIIBAHF+6+tWcPgtlStQSZfmU+aHTfib
-# 17EWgzxbjXO+gogFYDkAaUrgH1JbMIlzsLu+Mv05d5akVn12CGt0b2CQcF2+JXIG
-# ss9h9TBNaMNyhum9RWDSNR9WvXZuO8QeTm4VcsLBvZrp9zZWQbIOY4g51glAkY7b
-# iQ4D7eJzSB+1BCocSuBgAeikH55p0Iaq9mT8BQ7Et7UjYOBFBbAuzIAVs2OWjFet
-# Ve1a1fbDvWqMX6Mkjse9YORCqObTtIdUp3Cui7WsqLEfCEpMUPbJ4MX95iDbVMWY
-# 1mpIya7U9qzsC5eRjgDYkgSoXuWn3R//gRCwW+aE2f41Z/+Eh9s720tiyIY=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFC0I4H+WhGHqbm3p
+# 4ipsht01/WFzMA0GCSqGSIb3DQEBAQUABIIBAEhqToXGbg+zQEsE2BjiE3I5jvIa
+# fRBR6cb6DcEVkFaFwtsDWTOOmkC+wIF6h/EAPky2qNh3L45BApJ6HZKGpIDtkBQE
+# yh9rmP4PLPybwIYnPCFegUT6+Zimc6slqw9UVyR7PAgJqD+pFdIh+U9Blv9B8EMX
+# 8qfwZDx3iJlPo1UQBrM2WHSXPqJBhBRc2myM4LTVaqkmDu07RCiWT4PR7x8lAfss
+# fRbCGJixJpzlP6hwUiTyHBbWKON8NugpPz5wUILQCFvRQkhrRmjWesCGt/0nYqkN
+# k5rS19BoCdhRQhvopJTbBNyf0vnFA9i7/zgtjFXgbS6rj8mlCEabhMExO+A=
 # SIG # End signature block
