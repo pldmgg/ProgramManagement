@@ -29,7 +29,7 @@ NOTE: Currently, this Module does not support installation/uninstallation of App
 
 ## Examples
 
-### Scenario 1 Install A Program
+### Scenario 1: Install A Program
 
 ```powershell
 PS C:\Users\zeroadmin> Install-Program openssh
@@ -50,7 +50,7 @@ CurrentEnvPath     : C:\Program Files\ConEmu;C:\Program Files\ConE...[Truncated]
 
 In the above example, the Install-Program function decides successfully installs 'openssh' via PowerShellGet. The 'MainExecutable' Property of the PSCustomObject output is null because there was no way for the `Install-Program` function to determine what the name of the Main Executable for this particular program is called (i.e. `ssh.exe`) since it is not exactly the same as the Program's Name a and no additional parameters (like `-CommandName`) are used. The properties `OriginalSystemPath`,`CurrentSystemPath`,`OriginalEnvPath`, and `CurrentEnvPath` are provided to make it relatively easy to determine what (if any) changes were made to System PATH or $env:Path. This information also makes it easy to revert any undesireable PATH changes that certain program installations might perform.
 
-## Scenario 2 Uninstall A Program
+## Scenario 2: Uninstall A Program
 
 ```powershell
 PS C:\Users\pdadmin> Uninstall-Program python
@@ -88,7 +88,7 @@ DirectoriesThatMightNeedToBeRemoved ChocolateyInstalledProgramObjects PSGetInsta
 {C:\Python36}
 ```
 
-If you would like to skip the prompt and completely remove the specified program, use the `-UninstallAllSimilarlyNamedPackages` switch.
+If you would like to skip the prompt and completely remove the specified program, use the switch `-UninstallAllSimilarlyNamedPackages`.
 
 
 ## Notes
