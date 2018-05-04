@@ -37,7 +37,6 @@ Please wait...
 
 The program 'openssh' was installed successfully!
 
-
 InstallManager     : PowerShellGet
 InstallAction      : FreshInstall
 InstallCheck       : Microsoft.PackageManagement.Packaging.SoftwareIdentity
