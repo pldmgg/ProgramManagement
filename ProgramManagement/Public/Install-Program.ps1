@@ -1,62 +1,96 @@
 <#
     .SYNOPSIS
-        Install a Program using PackageManagement/PowerShellGet OR the Chocolatey Cmdline.
+        Install a Program using PowerShellGet/PackageManagement Modules OR the Chocolatey CmdLine.
 
     .DESCRIPTION
         This function was written to make program installation on Windows as easy and generic
         as possible by leveraging existing solutions such as PackageManagement/PowerShellGet
         and the Chocolatey CmdLine.
 
-        The function defaults to using PackageManagement/PowerShellGet. If that fails for
-        whatever reason, then the Chocolatey CmdLine is used. You can also use appropriate
-        parameters to specifically use EITHER PackageManagement/PowerShellGet OR the
-        Chocolatey CmdLine
+        Default behavior for this function (using only the -ProgramName parameter) is to try
+        installation via PackageManagement/PowerShellGet. If that fails for whatever reason, then
+        the Chocolatey CmdLine is used (it will be installed if it isn't already). You can use
+        more specific parameters to change this default behavior (i.e. ONLY try installation via
+        PowerShellGet/PackageManagement or ONLY try installation via Chocolatey CmdLine).
+
+        If you use the -ResolveCommandPath parameter, this function will attempt to find the Main
+        Executable associated with the Program you are installing. If the .exe does NOT have the
+        same name as the Program, the function may need additional information provided via the
+        -CommandName and/or -ExpectedInstallLocation parameters in order to find the Main Executable.
 
     .PARAMETER ProgramName
         This parameter is MANDATORY.
 
         This paramter takes a string that represents the name of the program that you'd like to install.
 
-    .PARAMETER UsePowerShellGet
-        This parameter is OPTIONAL.
-
-        This parameter is a switch that makes the function attempt program installation using ONLY
-        PackageManagement/PowerShellGet Modules. Install using those modules fails for whatever
-        reason, the function halts and returns the relevant error message(s).
-
-        Installation via the Chocolatey CmdLine will NOT be attempted.
-
-    .PARAMETER UseChocolateyCmdLine
-        This parameter is OPTIONAL.
-
-        This parameter is a switch that makes the function attemt program installation using ONLY
-        the Chocolatey CmdLine. If installation via the Chocolatey CmdLine fails for whatever reason,
-        the function halts and returns the relevant error message(s)
-
-    .PARAMETER ExpectedInstallLocation
-        This parameter is OPTIONAL.
-
-        This parameter takes a string that represents the full path to a directory that contains the
-        main executable for the installed program. This directory does NOT have to be the immediate
-        parent directory of the .exe.
-
-        If you are absolutely certain you know where on the filesystem the program will be installed,
-        then use this parameter to speed things up.
-
     .PARAMETER CommandName
         This parameter is OPTIONAL.
 
         This parameter takes a string that represents the name of the main executable for the installed
-        program. For example, if you are installing 7zip, the value of this parameter should be (under
-        most circumstances) '7z'.
+        program. For example, if you are installing 'openssh', the value of this parameter should be 'ssh'.
 
-    .PARAMETER NoUpdatePackageManagement
+    .PARAMETER PreRelease
         This parameter is OPTIONAL.
 
-        This parameter is a switch that suppresses this function's default behavior, which is to try
-        and update PackageManagement/PowerShellGet Modules before attempting to use them to install
-        the desired program. Updating these modules can take up to a minute, so use this switch
-        if you want to skip the attempt to update.
+        This parameter is a switch. If used, the latest version of the program in the pre-release branch
+        (if one exists) will be installed.
+
+    .PARAMETER UsePowerShellGet
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If used the function will attempt program installation using ONLY
+        PackageManagement/PowerShellGet Modules. If installation using those modules fails, the function
+        halts and returns the relevant error message(s).
+
+        Installation via the Chocolatey CmdLine will NOT be attempted.
+
+    .PARAMETER ForceChocoInstallScript
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If the program being installed is from the Chocolatey Package Repository,
+        using this parameter will force running the program's associated 'chocolateyinstall.ps1' script.
+        This switch exists because some Chocolatey packages do NOT run 'chocolateyinstall.ps1' by default,
+        meaning that 'Get-Package' could report that a program is 'Installed' when it actually is not.
+
+    .PARAMETER UseChocolateyCmdLine
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If used the function will attempt installation using ONLY
+        the Chocolatey CmdLine. (The Chocolatey CmdLine will be installed if it is not already).
+        If installation via the Chocolatey CmdLine fails for whatever reason,
+        the function halts and returns the relevant error message(s).
+
+    .PARAMETER UpdatePackageManagement
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If used, PowerShellGet/PackageManagement Modules will be updated before
+        any install actions take place.
+
+        WARNING: If the Modules are updated, you may need to open a new PowerShell Session before they can be used.
+
+    .PARAMETER ExpectedInstallLocation
+        This parameter is OPTIONAL.
+
+        This parameter takes a string that represents the full path to a directory that will contain
+        main executable associated with the program to be installed. This directory does NOT have to
+        be the immediate parent directory of the .exe.
+
+        If you are absolutely certain you know where the Main Executable for the program to be installed
+        will be, then use this parameter to speed things up.
+
+    .PARAMETER ScanCDriveForMainExeIfNecessary
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If used in conjunction with the -CommandName parameter, this function will
+        scan the entire C Drive until it finds a .exe that matches the values provided to the -CommandName parameter.
+
+    .PARAMETER ResolveCommandPath
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. This switch is meant to be used in situations where you are not certain what the
+        name of the Main Executable of the program to be installed will be. This switch will provide an array of
+        .exe files associated with the program installation in the 'PossibleMainExecutables' property of the function's
+        output.
 
     .EXAMPLE
         Install-Program -ProgramName kubernetes-cli -CommandName kubectl.exe
@@ -84,6 +118,9 @@ function Install-Program {
         [Parameter(Mandatory=$False)]
         [string]$CommandName,
 
+        [Parameter(Mandatory=$False)]
+        [switch]$PreRelease,
+
         [Parameter(
             Mandatory=$False,
             ParameterSetName='PackageManagement'
@@ -100,19 +137,16 @@ function Install-Program {
         [switch]$UseChocolateyCmdLine,
 
         [Parameter(Mandatory=$False)]
-        [string]$ExpectedInstallLocation,
+        [switch]$UpdatePackageManagement,
 
         [Parameter(Mandatory=$False)]
-        [switch]$NoUpdatePackageManagement = $True,
+        [string]$ExpectedInstallLocation,
 
         [Parameter(Mandatory=$False)]
         [switch]$ScanCDriveForMainExeIfNecessary,
 
         [Parameter(Mandatory=$False)]
-        [switch]$ResolveCommandPath = $False,
-
-        [Parameter(Mandatory=$False)]
-        [switch]$PreRelease
+        [switch]$ResolveCommandPath
     )
 
     ##### BEGIN Native Helper Functions #####
@@ -252,10 +286,6 @@ function Install-Program {
         return
     }
 
-    if ($UseChocolateyCmdLine) {
-        $NoUpdatePackageManagement = $True
-    }
-
     Write-Host "Please wait..."
     $global:FunctionResult = "0"
     $MyFunctionsUrl = "https://raw.githubusercontent.com/pldmgg/misc-powershell/master/MyFunctions"
@@ -265,7 +295,7 @@ function Install-Program {
     $null = Install-PackageProvider -Name Chocolatey -Force -Confirm:$False
     $null = Set-PackageSource -Name chocolatey -Trusted -Force
 
-    if (!$NoUpdatePackageManagement) {
+    if ($UpdatePackageManagement) {
         if (![bool]$(Get-Command Update-PackageManagement -ErrorAction SilentlyContinue)) {
             $UpdatePMFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Update-PackageManagement.ps1"
             try {
@@ -308,23 +338,23 @@ function Install-Program {
         }
     }
 
-    if (![bool]$(Get-Command Refresh-ChocolateyEnv -ErrorAction SilentlyContinue)) {
-        $RefreshCEFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Refresh-ChocolateyEnv.ps1"
+    if (![bool]$(Get-Command Update-ChocolateyEnv -ErrorAction SilentlyContinue)) {
+        $RefreshCEFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Update-ChocolateyEnv.ps1"
         try {
             Invoke-Expression $([System.Net.WebClient]::new().DownloadString($RefreshCEFunctionUrl))
         }
         catch {
             Write-Error $_
-            Write-Error "Unable to load the Refresh-ChocolateyEnv function! Halting!"
+            Write-Error "Unable to load the Update-ChocolateyEnv function! Halting!"
             $global:FunctionResult = "1"
             return
         }
     }
 
-    # Get-PackageManagerInstallObjects
+    # Get-AllPackageInfo
     try {
         #$null = clist --local-only
-        $PackageManagerInstallObjects = Get-PackageManagerInstallObjects -ProgramName $ProgramName -ErrorAction SilentlyContinue
+        $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction SilentlyContinue
         [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
         [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
         [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
@@ -415,7 +445,7 @@ function Install-Program {
     $OriginalSystemPath = $(Get-ItemProperty -Path 'Registry::HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Session Manager\Environment' -Name PATH).Path
     $OriginalEnvPath = $env:Path
     Synchronize-SystemPathEnvPath
-    $env:Path = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue
+    $env:Path = Update-ChocolateyEnv -ErrorAction SilentlyContinue
 
     ##### END Variable/Parameter Transforms and PreRun Prep #####
 
@@ -466,7 +496,7 @@ function Install-Program {
                 # Since Installation via PackageManagement/PowerShellGet was succesful, let's update $env:Path with the
                 # latest from System PATH before we go nuts trying to find the main executable manually
                 Synchronize-SystemPathEnvPath
-                $env:Path = $($(Refresh-ChocolateyEnv -ErrorAction SilentlyContinue) -split ";" | foreach {
+                $env:Path = $($(Update-ChocolateyEnv -ErrorAction SilentlyContinue) -split ";" | foreach {
                     if (-not [System.String]::IsNullOrWhiteSpace($_) -and $(Test-Path $_)) {$_}
                 }) -join ";"
             }
@@ -478,20 +508,20 @@ function Install-Program {
             try {
                 Write-Host "Refreshing `$env:Path..."
                 $global:FunctionResult = "0"
-                $env:Path = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
+                $env:Path = Update-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
 
-                # The first time we attempt to Refresh-ChocolateyEnv, Chocolatey CmdLine and/or the
+                # The first time we attempt to Update-ChocolateyEnv, Chocolatey CmdLine and/or the
                 # Chocolatey Package Provider legitimately might not be installed,
-                # so if the Refresh-ChocolateyEnv function throws that error, we can ignore it
+                # so if the Update-ChocolateyEnv function throws that error, we can ignore it
                 if ($RCEErr.Count -gt 0 -and
                 $global:FunctionResult -eq "1" -and
                 ![bool]$($RCEErr -match "Neither the Chocolatey PackageProvider nor the Chocolatey CmdLine appears to be installed!")) {
-                    throw "The Refresh-ChocolateyEnv function failed! Halting!"
+                    throw "The Update-ChocolateyEnv function failed! Halting!"
                 }
             }
             catch {
                 Write-Error $_
-                Write-Host "Errors from the Refresh-ChocolateyEnv function are as follows:"
+                Write-Host "Errors from the Update-ChocolateyEnv function are as follows:"
                 Write-Error $($RCEErr | Out-String)
                 $global:FunctionResult = "1"
                 return
@@ -501,7 +531,7 @@ function Install-Program {
             if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
                 try {
                     $global:FunctionResult = "0"
-                    $null = Install-ChocolateyCmdLine -NoUpdatePackageManagement -ErrorAction SilentlyContinue -ErrorVariable ICCErr -WarningAction SilentlyContinue
+                    $null = Install-ChocolateyCmdLine -ErrorAction SilentlyContinue -ErrorVariable ICCErr -WarningAction SilentlyContinue
                     if ($ICCErr -and $global:FunctionResult -eq "1") {throw "The Install-ChocolateyCmdLine function failed! Halting!"}
                 }
                 catch {
@@ -554,7 +584,7 @@ function Install-Program {
                 # Since Installation via the Chocolatey CmdLine was succesful, let's update $env:Path with the
                 # latest from System PATH before we go nuts trying to find the main executable manually
                 Synchronize-SystemPathEnvPath
-                $env:Path = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue
+                $env:Path = Update-ChocolateyEnv -ErrorAction SilentlyContinue
             }
             catch {
                 Write-Error "There was a problem installing $ProgramName using the Chocolatey cmdline! Halting!"
@@ -578,12 +608,12 @@ function Install-Program {
                 try {
                     Write-Host "Refreshing `$env:Path..."
                     $global:FunctionResult = "0"
-                    $env:Path = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
-                    if ($RCEErr.Count -gt 0 -and $global:FunctionResult -eq "1") {throw "The Refresh-ChocolateyEnv function failed! Halting!"}
+                    $env:Path = Update-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
+                    if ($RCEErr.Count -gt 0 -and $global:FunctionResult -eq "1") {throw "The Update-ChocolateyEnv function failed! Halting!"}
                 }
                 catch {
                     Write-Error $_
-                    Write-Host "Errors from the Refresh-ChocolateyEnv function are as follows:"
+                    Write-Host "Errors from the Update-ChocolateyEnv function are as follows:"
                     Write-Error $($RCEErr | Out-String)
                     $global:FunctionResult = "1"
                     return
@@ -592,7 +622,7 @@ function Install-Program {
             
             # If we still can't find the main executable...
             if (![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue) -and $(!$ExePath -or $ExePath.Count -eq 0)) {
-                $env:Path = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue
+                $env:Path = Update-ChocolateyEnv -ErrorAction SilentlyContinue
                 
                 if ($ExpectedInstallLocation) {
                     [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName -ExpectedInstallLocation $ExpectedInstallLocation
@@ -690,7 +720,7 @@ function Install-Program {
 
                             # Now that the $ChocolateyInstallScript ran, search for the main executable again
                             Synchronize-SystemPathEnvPath
-                            $env:Path = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue
+                            $env:Path = Update-ChocolateyEnv -ErrorAction SilentlyContinue
 
                             if ($ExpectedInstallLocation) {
                                 [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName -ExpectedInstallLocation $ExpectedInstallLocation
@@ -863,7 +893,7 @@ function Install-Program {
         $InstallAction = "FreshInstall"
     }
 
-    $env:Path = Refresh-ChocolateyEnv
+    $env:Path = Update-ChocolateyEnv
 
     1..3 | foreach {Pop-Location}
 
@@ -893,8 +923,8 @@ function Install-Program {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQURxVU6S9i1cKHuI+K8zOCGS/h
-# wW+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUPsI+GyVEd6A5myCXEdRAzKqm
+# x2Kgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -951,11 +981,11 @@ function Install-Program {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFC0I4H+WhGHqbm3p
-# 4ipsht01/WFzMA0GCSqGSIb3DQEBAQUABIIBAEhqToXGbg+zQEsE2BjiE3I5jvIa
-# fRBR6cb6DcEVkFaFwtsDWTOOmkC+wIF6h/EAPky2qNh3L45BApJ6HZKGpIDtkBQE
-# yh9rmP4PLPybwIYnPCFegUT6+Zimc6slqw9UVyR7PAgJqD+pFdIh+U9Blv9B8EMX
-# 8qfwZDx3iJlPo1UQBrM2WHSXPqJBhBRc2myM4LTVaqkmDu07RCiWT4PR7x8lAfss
-# fRbCGJixJpzlP6hwUiTyHBbWKON8NugpPz5wUILQCFvRQkhrRmjWesCGt/0nYqkN
-# k5rS19BoCdhRQhvopJTbBNyf0vnFA9i7/zgtjFXgbS6rj8mlCEabhMExO+A=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFJKwLj4JoUBlqQ2J
+# TmVG9mq89AxjMA0GCSqGSIb3DQEBAQUABIIBABHSwBs+LnqgDiCuA2iZZF9yBLLR
+# KsyB8UeeFZQU51qJdfIp7BJ+261jCb+ntvZDwuwhvFVqVrPpTOs2xnihqFp5vlY/
+# l+5QPWiGmfbulKpfYEy4tRTcXIGwxv/Z2mZsyqtN4qrga3FpTnm5Gzc54P/fRe3/
+# 2ycgOiYIOq1lR0A3eU/g84WeRJVpDOvQtKldYfrFjm4cBmJ3YwL8QPT+YjaU05PK
+# Xv1y8s17hHSpEU///UViEc7wsrviLU4RJWT4hCaGveVy1Cpf39OBh9/jRDGohOH8
+# G/5Ro4NPdBY/e7EHq2+iXKPa2NLXBJeVsPBZ5Z1M7LbqLPuFh1Cui4wyFwo=
 # SIG # End signature block

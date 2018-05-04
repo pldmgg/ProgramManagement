@@ -17,7 +17,119 @@ foreach ($import in $Private) {
 # Public Functions
 
 
-function Check-InstalledPrograms {
+function Get-AllPackageInfo {
+    [CmdletBinding()]
+    Param (
+        [Parameter(Mandatory=$True)]
+        [string]$ProgramName
+    )
+
+    # Generate regex string to loosely match Program Name
+    $PNRegexPrep = $([char[]]$ProgramName | foreach {"([\.]|[$_])+"}) -join ""
+    $PNRegexPrep2 = $($PNRegexPrep -split "\+")[1..$($($PNRegexPrep -split "\+").Count)] -join "+"
+    $PNRegex = "^$([char[]]$ProgramName[0])+$PNRegexPrep2"
+    # For example, $PNRegex string for $ProgramName 'nodejs' should be:
+    #     ^n+([\.]|[o])+([\.]|[d])+([\.]|[e])+([\.]|[j])+([\.]|[s])+
+
+    # If PackageManagement/PowerShellGet is installed, determine if $ProgramName is installed
+    if ([bool]$(Get-Command Get-Package -ErrorAction SilentlyContinue)) {
+        $PSGetInstalledPrograms = Get-Package
+        $PSGetInstalledPackageObjectsFinal = $PSGetInstalledPrograms | Where-Object {$_.Name -match $PNRegex}
+
+        # Add some more information regarding these packages - specifically MSIFileItem, MSILastWriteTime, and RegLastWriteTime
+        # This info will come in handy if there's a specific order related packages needed to be uninstalled in so that it's clean.
+        # (In other words, with this info, we can sort by when specific packages were installed, and uninstall latest to earliest
+        # so that there aren't any race conditions)
+        [array]$CheckInstalledPrograms = Get-InstalledProgramsFromRegistry -ProgramTitleSearchTerm $PNRegex
+        $WindowsInstallerMSIs = Get-ChildItem -Path "C:\Windows\Installer" -File
+        $RelevantMSIFiles = foreach ($FileItem in $WindowsInstallerMSIs) {
+            $MSIProductName = GetMSIFileInfo -Path $FileItem.FullName -Property ProductName -WarningAction SilentlyContinue
+            if ($MSIProductName -match $PNRegex) {
+                [pscustomobject]@{
+                    ProductName = $MSIProductName
+                    FileItem    = $FileItem
+                }
+            }
+        }
+        
+        if ($CheckInstalledPrograms.Count -gt 0) {
+            if ($($(Get-Item $CheckInstalledPrograms[0].PSPath) | Get-Member).Name -notcontains "LastWriteTime") {
+                AddLastWriteTimeToRegKeys
+            }
+
+            foreach ($RegPropertiesCollection in $CheckInstalledPrograms) {
+                $RegPropertiesCollection | Add-Member -MemberType NoteProperty -Name "LastWriteTime" -Value $(Get-Item $RegPropertiesCollection.PSPath).LastWriteTime
+            }
+            [System.Collections.ArrayList]$CheckInstalledPrograms = [System.Collections.ArrayList][array]$($CheckInstalledPrograms | Sort-Object -Property LastWriteTime)
+            # Make sure that the LATEST Registry change comes FIRST in the ArrayList
+            $CheckInstalledPrograms.Reverse()
+
+            foreach ($Package in $PSGetInstalledPackageObjectsFinal) {
+                $RelevantMSIFile = $RelevantMSIFiles | Where-Object {$_.ProductName -eq $Package.Name}
+                $Package | Add-Member -MemberType NoteProperty -Name "MSIFileItem" -Value $RelevantMSIFile.FileItem
+                $Package | Add-Member -MemberType NoteProperty -Name "MSILastWriteTime" -Value $RelevantMSIFile.FileItem.LastWriteTime
+
+                if ($Package.TagId -ne $null) {
+                    $RegProperties = $CheckInstalledPrograms | Where-Object {$_.PSChildName -match $Package.TagId}
+                    $LastWriteTime = $(Get-Item $RegProperties.PSPath).LastWriteTime
+                    $Package | Add-Member -MemberType NoteProperty -Name "RegLastWriteTime" -Value $LastWriteTime
+                }
+            }
+            [System.Collections.ArrayList]$PSGetInstalledPackageObjectsFinal = [array]$($PSGetInstalledPackageObjectsFinal | Sort-Object -Property MSILastWriteTime)
+            # Make sure that the LATEST install comes FIRST in the ArrayList
+            $PSGetInstalledPackageObjectsFinal.Reverse()
+        }        
+    }
+
+    # If the Chocolatey CmdLine is installed, get a list of programs installed via Chocolatey
+    if ([bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
+        #$ChocolateyInstalledProgramsPrep = clist --local-only
+        
+        $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
+        #$ProcessInfo.WorkingDirectory = $BinaryPath | Split-Path -Parent
+        $ProcessInfo.FileName = $(Get-Command clist).Source
+        $ProcessInfo.RedirectStandardError = $true
+        $ProcessInfo.RedirectStandardOutput = $true
+        $ProcessInfo.UseShellExecute = $false
+        $ProcessInfo.Arguments = "--local-only"
+        $Process = New-Object System.Diagnostics.Process
+        $Process.StartInfo = $ProcessInfo
+        $Process.Start() | Out-Null
+        # Below $FinishedInAlottedTime returns boolean true/false
+        $FinishedInAlottedTime = $Process.WaitForExit(15000)
+        if (!$FinishedInAlottedTime) {
+            $Process.Kill()
+        }
+        $stdout = $Process.StandardOutput.ReadToEnd()
+        $stderr = $Process.StandardError.ReadToEnd()
+        $AllOutput = $stdout + $stderr
+
+        $ChocolateyInstalledProgramsPrep = $($stdout -split "`n")[1..$($($stdout -split "`n").Count-3)]
+
+        [System.Collections.ArrayList]$ChocolateyInstalledProgramObjects = @()
+
+        foreach ($program in $ChocolateyInstalledProgramsPrep) {
+            $programParsed = $program -split " "
+            $PSCustomObject = [pscustomobject]@{
+                ProgramName     = $programParsed[0]
+                Version         = $programParsed[1]
+            }
+
+            $null = $ChocolateyInstalledProgramObjects.Add($PSCustomObject)
+        }
+
+        $ChocolateyInstalledProgramObjectsFinal = $ChocolateyInstalledProgramObjects | Where-Object {$_.ProgramName -match $PNRegex}
+    }
+
+    [pscustomobject]@{
+        ChocolateyInstalledProgramObjects           = $ChocolateyInstalledProgramObjectsFinal
+        PSGetInstalledPackageObjects                = $PSGetInstalledPackageObjectsFinal
+        RegistryProperties                          = $CheckInstalledPrograms
+    }
+}
+
+
+function Get-InstalledProgramsFromRegistry {
     [CmdletBinding(
         PositionalBinding=$True,
         DefaultParameterSetName='Default Param Set'
@@ -111,118 +223,6 @@ function Check-InstalledPrograms {
 }
 
 
-function Get-PackageManagerInstallObjects {
-    [CmdletBinding()]
-    Param (
-        [Parameter(Mandatory=$True)]
-        [string]$ProgramName
-    )
-
-    # Generate regex string to loosely match Program Name
-    $PNRegexPrep = $([char[]]$ProgramName | foreach {"([\.]|[$_])+"}) -join ""
-    $PNRegexPrep2 = $($PNRegexPrep -split "\+")[1..$($($PNRegexPrep -split "\+").Count)] -join "+"
-    $PNRegex = "^$([char[]]$ProgramName[0])+$PNRegexPrep2"
-    # For example, $PNRegex string for $ProgramName 'nodejs' should be:
-    #     ^n+([\.]|[o])+([\.]|[d])+([\.]|[e])+([\.]|[j])+([\.]|[s])+
-
-    # If PackageManagement/PowerShellGet is installed, determine if $ProgramName is installed
-    if ([bool]$(Get-Command Get-Package -ErrorAction SilentlyContinue)) {
-        $PSGetInstalledPrograms = Get-Package
-        $PSGetInstalledPackageObjectsFinal = $PSGetInstalledPrograms | Where-Object {$_.Name -match $PNRegex}
-
-        # Add some more information regarding these packages - specifically MSIFileItem, MSILastWriteTime, and RegLastWriteTime
-        # This info will come in handy if there's a specific order related packages needed to be uninstalled in so that it's clean.
-        # (In other words, with this info, we can sort by when specific packages were installed, and uninstall latest to earliest
-        # so that there aren't any race conditions)
-        [array]$CheckInstalledPrograms = Check-InstalledPrograms -ProgramTitleSearchTerm $PNRegex
-        $WindowsInstallerMSIs = Get-ChildItem -Path "C:\Windows\Installer" -File
-        $RelevantMSIFiles = foreach ($FileItem in $WindowsInstallerMSIs) {
-            $MSIProductName = GetMSIFileInfo -Path $FileItem.FullName -Property ProductName -WarningAction SilentlyContinue
-            if ($MSIProductName -match $PNRegex) {
-                [pscustomobject]@{
-                    ProductName = $MSIProductName
-                    FileItem    = $FileItem
-                }
-            }
-        }
-        
-        if ($CheckInstalledPrograms.Count -gt 0) {
-            if ($($(Get-Item $CheckInstalledPrograms[0].PSPath) | Get-Member).Name -notcontains "LastWriteTime") {
-                AddLastWriteTimeToRegKeys
-            }
-
-            foreach ($RegPropertiesCollection in $CheckInstalledPrograms) {
-                $RegPropertiesCollection | Add-Member -MemberType NoteProperty -Name "LastWriteTime" -Value $(Get-Item $RegPropertiesCollection.PSPath).LastWriteTime
-            }
-            [System.Collections.ArrayList]$CheckInstalledPrograms = [System.Collections.ArrayList][array]$($CheckInstalledPrograms | Sort-Object -Property LastWriteTime)
-            # Make sure that the LATEST Registry change comes FIRST in the ArrayList
-            $CheckInstalledPrograms.Reverse()
-
-            foreach ($Package in $PSGetInstalledPackageObjectsFinal) {
-                $RelevantMSIFile = $RelevantMSIFiles | Where-Object {$_.ProductName -eq $Package.Name}
-                $Package | Add-Member -MemberType NoteProperty -Name "MSIFileItem" -Value $RelevantMSIFile.FileItem
-                $Package | Add-Member -MemberType NoteProperty -Name "MSILastWriteTime" -Value $RelevantMSIFile.FileItem.LastWriteTime
-
-                if ($Package.TagId -ne $null) {
-                    $RegProperties = $CheckInstalledPrograms | Where-Object {$_.PSChildName -match $Package.TagId}
-                    $LastWriteTime = $(Get-Item $RegProperties.PSPath).LastWriteTime
-                    $Package | Add-Member -MemberType NoteProperty -Name "RegLastWriteTime" -Value $LastWriteTime
-                }
-            }
-            [System.Collections.ArrayList]$PSGetInstalledPackageObjectsFinal = [array]$($PSGetInstalledPackageObjectsFinal | Sort-Object -Property MSILastWriteTime)
-            # Make sure that the LATEST install comes FIRST in the ArrayList
-            $PSGetInstalledPackageObjectsFinal.Reverse()
-        }        
-    }
-
-    # If the Chocolatey CmdLine is installed, get a list of programs installed via Chocolatey
-    if ([bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
-        #$ChocolateyInstalledProgramsPrep = clist --local-only
-        
-        $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
-        #$ProcessInfo.WorkingDirectory = $BinaryPath | Split-Path -Parent
-        $ProcessInfo.FileName = $(Get-Command clist).Source
-        $ProcessInfo.RedirectStandardError = $true
-        $ProcessInfo.RedirectStandardOutput = $true
-        $ProcessInfo.UseShellExecute = $false
-        $ProcessInfo.Arguments = "--local-only"
-        $Process = New-Object System.Diagnostics.Process
-        $Process.StartInfo = $ProcessInfo
-        $Process.Start() | Out-Null
-        # Below $FinishedInAlottedTime returns boolean true/false
-        $FinishedInAlottedTime = $Process.WaitForExit(15000)
-        if (!$FinishedInAlottedTime) {
-            $Process.Kill()
-        }
-        $stdout = $Process.StandardOutput.ReadToEnd()
-        $stderr = $Process.StandardError.ReadToEnd()
-        $AllOutput = $stdout + $stderr
-
-        $ChocolateyInstalledProgramsPrep = $($stdout -split "`n")[1..$($($stdout -split "`n").Count-3)]
-
-        [System.Collections.ArrayList]$ChocolateyInstalledProgramObjects = @()
-
-        foreach ($program in $ChocolateyInstalledProgramsPrep) {
-            $programParsed = $program -split " "
-            $PSCustomObject = [pscustomobject]@{
-                ProgramName     = $programParsed[0]
-                Version         = $programParsed[1]
-            }
-
-            $null = $ChocolateyInstalledProgramObjects.Add($PSCustomObject)
-        }
-
-        $ChocolateyInstalledProgramObjectsFinal = $ChocolateyInstalledProgramObjects | Where-Object {$_.ProgramName -match $PNRegex}
-    }
-
-    [pscustomobject]@{
-        ChocolateyInstalledProgramObjects           = $ChocolateyInstalledProgramObjectsFinal
-        PSGetInstalledPackageObjects                = $PSGetInstalledPackageObjectsFinal
-        RegistryProperties                          = $CheckInstalledPrograms
-    }
-}
-
-
 function Install-ChocolateyCmdLine {
     [CmdletBinding()]
     Param (
@@ -272,14 +272,14 @@ function Install-ChocolateyCmdLine {
         }
     }
 
-    if (![bool]$(Get-Command Refresh-ChocolateyEnv -ErrorAction SilentlyContinue)) {
-        $RefreshCEFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Refresh-ChocolateyEnv.ps1"
+    if (![bool]$(Get-Command Update-ChocolateyEnv -ErrorAction SilentlyContinue)) {
+        $RefreshCEFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Update-ChocolateyEnv.ps1"
         try {
             Invoke-Expression $([System.Net.WebClient]::new().DownloadString($RefreshCEFunctionUrl))
         }
         catch {
             Write-Error $_
-            Write-Error "Unable to load the Refresh-ChocolateyEnv function! Halting!"
+            Write-Error "Unable to load the Update-ChocolateyEnv function! Halting!"
             $global:FunctionResult = "1"
             return
         }
@@ -326,17 +326,17 @@ function Install-ChocolateyCmdLine {
         try {
             Write-Host "Refreshing `$env:Path..."
             $global:FunctionResult = "0"
-            $null = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
+            $null = Update-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
             
             if ($RCEErr.Count -gt 0 -and
             $global:FunctionResult -eq "1" -and
             ![bool]$($RCEErr -match "Neither the Chocolatey PackageProvider nor the Chocolatey CmdLine appears to be installed!")) {
-                throw "The Refresh-ChocolateyEnv function failed! Halting!"
+                throw "The Update-ChocolateyEnv function failed! Halting!"
             }
         }
         catch {
             Write-Error $_
-            Write-Host "Errors from the Refresh-ChocolateyEnv function are as follows:"
+            Write-Host "Errors from the Update-ChocolateyEnv function are as follows:"
             Write-Error $($RCEErr | Out-String)
             $global:FunctionResult = "1"
             return
@@ -400,25 +400,25 @@ function Install-ChocolateyCmdLine {
             $PMPGetInstall = $False
         }
         
-        # If we STILL can't find choco.exe, then Refresh-ChocolateyEnv a third time...
+        # If we STILL can't find choco.exe, then Update-ChocolateyEnv a third time...
         #if (![bool]$($env:Path -split ";" -match "chocolatey\\bin")) {
         if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
-            # ...and then find it again and add it to $env:Path via Refresh-ChocolateyEnv function
+            # ...and then find it again and add it to $env:Path via Update-ChocolateyEnv function
             if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
                 try {
                     Write-Host "Refreshing `$env:Path..."
                     $global:FunctionResult = "0"
-                    $null = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
+                    $null = Update-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
                     
                     if ($RCEErr.Count -gt 0 -and
                     $global:FunctionResult -eq "1" -and
                     ![bool]$($RCEErr -match "Neither the Chocolatey PackageProvider nor the Chocolatey CmdLine appears to be installed!")) {
-                        throw "The Refresh-ChocolateyEnv function failed! Halting!"
+                        throw "The Update-ChocolateyEnv function failed! Halting!"
                     }
                 }
                 catch {
                     Write-Error $_
-                    Write-Host "Errors from the Refresh-ChocolateyEnv function are as follows:"
+                    Write-Host "Errors from the Update-ChocolateyEnv function are as follows:"
                     Write-Error $($RCEErr | Out-String)
                     $global:FunctionResult = "1"
                     return
@@ -447,14 +447,14 @@ function Install-ChocolateyCmdLine {
             try {
                 Write-Host "Refreshing `$env:Path..."
                 $global:FunctionResult = "0"
-                $null = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
+                $null = Update-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
                 if ($RCEErr.Count -gt 0 -and $global:FunctionResult -eq "1") {
-                    throw "The Refresh-ChocolateyEnv function failed! Halting!"
+                    throw "The Update-ChocolateyEnv function failed! Halting!"
                 }
             }
             catch {
                 Write-Error $_
-                Write-Host "Errors from the Refresh-ChocolateyEnv function are as follows:"
+                Write-Host "Errors from the Update-ChocolateyEnv function are as follows:"
                 Write-Error $($RCEErr | Out-String)
                 $global:FunctionResult = "1"
                 return
@@ -792,23 +792,23 @@ function Install-Program {
         }
     }
 
-    if (![bool]$(Get-Command Refresh-ChocolateyEnv -ErrorAction SilentlyContinue)) {
-        $RefreshCEFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Refresh-ChocolateyEnv.ps1"
+    if (![bool]$(Get-Command Update-ChocolateyEnv -ErrorAction SilentlyContinue)) {
+        $RefreshCEFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Update-ChocolateyEnv.ps1"
         try {
             Invoke-Expression $([System.Net.WebClient]::new().DownloadString($RefreshCEFunctionUrl))
         }
         catch {
             Write-Error $_
-            Write-Error "Unable to load the Refresh-ChocolateyEnv function! Halting!"
+            Write-Error "Unable to load the Update-ChocolateyEnv function! Halting!"
             $global:FunctionResult = "1"
             return
         }
     }
 
-    # Get-PackageManagerInstallObjects
+    # Get-AllPackageInfo
     try {
         #$null = clist --local-only
-        $PackageManagerInstallObjects = Get-PackageManagerInstallObjects -ProgramName $ProgramName -ErrorAction SilentlyContinue
+        $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction SilentlyContinue
         [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
         [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
         [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
@@ -899,7 +899,7 @@ function Install-Program {
     $OriginalSystemPath = $(Get-ItemProperty -Path 'Registry::HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Session Manager\Environment' -Name PATH).Path
     $OriginalEnvPath = $env:Path
     Synchronize-SystemPathEnvPath
-    $env:Path = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue
+    $env:Path = Update-ChocolateyEnv -ErrorAction SilentlyContinue
 
     ##### END Variable/Parameter Transforms and PreRun Prep #####
 
@@ -950,7 +950,7 @@ function Install-Program {
                 # Since Installation via PackageManagement/PowerShellGet was succesful, let's update $env:Path with the
                 # latest from System PATH before we go nuts trying to find the main executable manually
                 Synchronize-SystemPathEnvPath
-                $env:Path = $($(Refresh-ChocolateyEnv -ErrorAction SilentlyContinue) -split ";" | foreach {
+                $env:Path = $($(Update-ChocolateyEnv -ErrorAction SilentlyContinue) -split ";" | foreach {
                     if (-not [System.String]::IsNullOrWhiteSpace($_) -and $(Test-Path $_)) {$_}
                 }) -join ";"
             }
@@ -962,20 +962,20 @@ function Install-Program {
             try {
                 Write-Host "Refreshing `$env:Path..."
                 $global:FunctionResult = "0"
-                $env:Path = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
+                $env:Path = Update-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
 
-                # The first time we attempt to Refresh-ChocolateyEnv, Chocolatey CmdLine and/or the
+                # The first time we attempt to Update-ChocolateyEnv, Chocolatey CmdLine and/or the
                 # Chocolatey Package Provider legitimately might not be installed,
-                # so if the Refresh-ChocolateyEnv function throws that error, we can ignore it
+                # so if the Update-ChocolateyEnv function throws that error, we can ignore it
                 if ($RCEErr.Count -gt 0 -and
                 $global:FunctionResult -eq "1" -and
                 ![bool]$($RCEErr -match "Neither the Chocolatey PackageProvider nor the Chocolatey CmdLine appears to be installed!")) {
-                    throw "The Refresh-ChocolateyEnv function failed! Halting!"
+                    throw "The Update-ChocolateyEnv function failed! Halting!"
                 }
             }
             catch {
                 Write-Error $_
-                Write-Host "Errors from the Refresh-ChocolateyEnv function are as follows:"
+                Write-Host "Errors from the Update-ChocolateyEnv function are as follows:"
                 Write-Error $($RCEErr | Out-String)
                 $global:FunctionResult = "1"
                 return
@@ -1038,7 +1038,7 @@ function Install-Program {
                 # Since Installation via the Chocolatey CmdLine was succesful, let's update $env:Path with the
                 # latest from System PATH before we go nuts trying to find the main executable manually
                 Synchronize-SystemPathEnvPath
-                $env:Path = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue
+                $env:Path = Update-ChocolateyEnv -ErrorAction SilentlyContinue
             }
             catch {
                 Write-Error "There was a problem installing $ProgramName using the Chocolatey cmdline! Halting!"
@@ -1062,12 +1062,12 @@ function Install-Program {
                 try {
                     Write-Host "Refreshing `$env:Path..."
                     $global:FunctionResult = "0"
-                    $env:Path = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
-                    if ($RCEErr.Count -gt 0 -and $global:FunctionResult -eq "1") {throw "The Refresh-ChocolateyEnv function failed! Halting!"}
+                    $env:Path = Update-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
+                    if ($RCEErr.Count -gt 0 -and $global:FunctionResult -eq "1") {throw "The Update-ChocolateyEnv function failed! Halting!"}
                 }
                 catch {
                     Write-Error $_
-                    Write-Host "Errors from the Refresh-ChocolateyEnv function are as follows:"
+                    Write-Host "Errors from the Update-ChocolateyEnv function are as follows:"
                     Write-Error $($RCEErr | Out-String)
                     $global:FunctionResult = "1"
                     return
@@ -1076,7 +1076,7 @@ function Install-Program {
             
             # If we still can't find the main executable...
             if (![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue) -and $(!$ExePath -or $ExePath.Count -eq 0)) {
-                $env:Path = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue
+                $env:Path = Update-ChocolateyEnv -ErrorAction SilentlyContinue
                 
                 if ($ExpectedInstallLocation) {
                     [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName -ExpectedInstallLocation $ExpectedInstallLocation
@@ -1174,7 +1174,7 @@ function Install-Program {
 
                             # Now that the $ChocolateyInstallScript ran, search for the main executable again
                             Synchronize-SystemPathEnvPath
-                            $env:Path = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue
+                            $env:Path = Update-ChocolateyEnv -ErrorAction SilentlyContinue
 
                             if ($ExpectedInstallLocation) {
                                 [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName -ExpectedInstallLocation $ExpectedInstallLocation
@@ -1347,7 +1347,7 @@ function Install-Program {
         $InstallAction = "FreshInstall"
     }
 
-    $env:Path = Refresh-ChocolateyEnv
+    $env:Path = Update-ChocolateyEnv
 
     1..3 | foreach {Pop-Location}
 
@@ -1375,7 +1375,205 @@ function Install-Program {
 }
 
 
-function Refresh-ChocolateyEnv {
+function Uninstall-Program {
+    [CmdletBinding()]
+    Param (
+        [Parameter(Mandatory=$True)]
+        [string]$ProgramName,
+
+        [Parameter(Mandatory=$False)]
+        [switch]$UninstallAllSimilarlyNamedPackages
+    )
+
+    #region >> Variable/Parameter Transforms and PreRun Prep
+
+    if (!$(GetElevation)) {
+        Write-Error "The $($MyInvocation.MyCommand.Name) function must be ran from an elevated PowerShell Session (i.e. 'Run as Administrator')! Halting!"
+        $global:FunctionResult = "1"
+        return
+    }
+
+    try {
+        #$null = clist --local-only
+        $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction SilentlyContinue
+        [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
+        [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
+        [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
+    }
+    catch {
+        Write-Error $_
+        $global:FunctionResult = "1"
+        return
+    }
+
+    #endregion >> Variable/Parameter Transforms and PreRun Prep
+    
+
+    #region >> Main Body
+    if ($ChocolateyInstalledProgramObjects.Count -eq 0 -and $PSGetInstalledPackageObjects.Count -eq 0) {
+        Write-Error "Unable to find an installed program matching the name $ProgramName! Halting!"
+        $global:FunctionResult = "1"
+        return
+    }
+
+    # We MIGHT be able to get the directory where the Program's binaries are by using Get-Command.
+    # This info is only useful if the uninstall isn't clean for some reason
+    $ProgramExePath = $(Get-Command $ProgramName -ErrorAction SilentlyContinue).Source
+    if ($ProgramExePath) {
+        $ProgramParentDirPath = $ProgramExePath | Split-Path -Parent
+    }
+
+    if ($PSGetInstalledPackageObjects.Count -gt 0) {
+        [System.Collections.ArrayList]$PSGetUninstallFailures = @()
+            
+        # Make sure that we uninstall Packages where 'ProviderName' is 'Programs' LAST
+        foreach ($Package in $PSGetInstalledPackageObjects) {
+            if ($Package.ProviderName -ne "Programs") {
+                Write-Host "Uninstalling $($Package.Name)..."
+                $UninstallResult = $Package | Uninstall-Package -Force -Confirm:$False -ErrorAction SilentlyContinue
+            }
+        }
+        foreach ($Package in $PSGetInstalledPackageObjects) {
+            if ($Package.ProviderName -eq "Programs") {
+                Write-Host "Uninstalling $($Package.Name)..."
+                $UninstallResult = $Package | Uninstall-Package -Force -Confirm:$False -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    try {
+        $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction Stop
+        [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
+        [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
+        [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
+    }
+    catch {
+        Write-Error $_
+        $global:FunctionResult = "1"
+        return
+    }
+
+    # If we still have lingering packages, we need to try uninstall via what the Registry says the uninstall command is...
+    if ($PSGetInstalledPackageObjects.Count -gt 0) {
+        if ($RegistryProperties.Count -gt 0) {
+            foreach ($Program in $RegistryProperties) {
+                if ($Program.QuietUninstallString -ne $null) {
+                    Invoke-Expression "& $($Program.QuietUninstallString)"
+                }
+            }
+        }
+    }
+
+    try {
+        $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction Stop
+        [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
+        [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
+        [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
+    }
+    catch {
+        Write-Error $_
+        $global:FunctionResult = "1"
+        return
+    }
+
+    # If we STILL have lingering packages, we'll just delete from the registry directly and clean up any binaries on the filesystem...
+    if ($PSGetInstalledPackageObjects.Count -gt 0) {
+        if ($RegistryProperties.Count -gt 0) {
+            foreach ($Program in $RegistryProperties) {
+                if (Test-Path $Program.PSPath) {
+                    Remove-Item -Path $Program.PSPath -Recurse -Force
+                }
+            }
+        }
+
+        if ($ProgramParentDirPath) {
+            if (Test-Path $ProgramParentDirPath) {
+                Remove-Item $ProgramParentDirPath -Recurse -Force
+            }
+        }
+    }
+
+    try {
+        $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction Stop
+        [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
+        [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
+        [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
+    }
+    catch {
+        Write-Error $_
+        $global:FunctionResult = "1"
+        return
+    }
+
+    # Now take care of chocolatey if necessary...
+    if ($ChocolateyInstalledProgramObjects.Count -gt 0) {
+        $ChocoUninstallAttempt = $True
+        [System.Collections.ArrayList]$ChocoUninstallFailuresPrep = @()
+        [System.Collections.ArrayList]$ChocoUninstallSuccesses = @()
+
+        $ErrorFile = [IO.Path]::Combine([IO.Path]::GetTempPath(), [IO.Path]::GetRandomFileName())
+        #$ErrorFile
+        foreach ($ProgramObj in $ChocolateyInstalledProgramObjects) {
+            #Write-Host "Running $($(Get-Command choco).Source) uninstall $($ProgramObj.ProgramName) -y"
+            $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
+            #$ProcessInfo.WorkingDirectory = $BinaryPath | Split-Path -Parent
+            $ProcessInfo.FileName = $(Get-Command choco).Source
+            $ProcessInfo.RedirectStandardError = $true
+            $ProcessInfo.RedirectStandardOutput = $true
+            $ProcessInfo.UseShellExecute = $false
+            $ProcessInfo.Arguments = "uninstall $($ProgramObj.ProgramName) -y --force" # optionally -n --remove-dependencies
+            $Process = New-Object System.Diagnostics.Process
+            $Process.StartInfo = $ProcessInfo
+            $Process.Start() | Out-Null
+            # Below $FinishedInAlottedTime returns boolean true/false
+            $FinishedInAlottedTime = $Process.WaitForExit(60000)
+            if (!$FinishedInAlottedTime) {
+                $Process.Kill()
+            }
+            $stdout = $Process.StandardOutput.ReadToEnd()
+            $stderr = $Process.StandardError.ReadToEnd()
+            $AllOutput = $stdout + $stderr
+
+            if ($AllOutput -match "failed") {
+                $null = $ChocoUninstallFailuresPrep.Add($ProgramObj)
+            }
+            else {
+                $null = $ChocoUninstallSuccesses.Add($ProgramObj)
+            }
+        }
+    }
+
+    # Re-Check all PackageManager Objects because an uninstall action may/may not have happened
+    try {
+        $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction Stop
+        [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
+        [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
+        [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
+    }
+    catch {
+        Write-Error $_
+        $global:FunctionResult = "1"
+        return
+    }
+
+    if ($ChocolateyInstalledProgramObjects.Count -gt 0 -or $PSGetInstalledPackageObjects.Count -gt 0 -or $RegistryProperties.Count -gt 0) {
+        Write-Warning "The program '$ProgramName' did NOT cleanly uninstall. Please review output of the Uninstall-Program function for details about lingering references."
+    }
+    else {
+        Write-Host "The program '$ProgramName' was uninstalled successfully!" -ForegroundColor Green
+    }
+
+    [pscustomobject]@{
+        ChocolateyInstalledProgramObjects   = [array]$ChocolateyInstalledProgramObjects
+        PSGetInstalledPackageObjects        = [array]$PSGetInstalledPackageObjects
+        RegistryProperties                  = [array]$RegistryProperties
+    }
+
+    #endregion >> Main Body
+}
+
+
+function Update-ChocolateyEnv {
     [CmdletBinding()]
     Param(
         [Parameter(Mandatory=$False)]
@@ -1478,204 +1676,6 @@ function Refresh-ChocolateyEnv {
 
     ##### END Main Body #####
 
-}
-
-
-function Uninstall-Program {
-    [CmdletBinding()]
-    Param (
-        [Parameter(Mandatory=$True)]
-        [string]$ProgramName,
-
-        [Parameter(Mandatory=$False)]
-        [switch]$UninstallAllSimilarlyNamedPackages
-    )
-
-    #region >> Variable/Parameter Transforms and PreRun Prep
-
-    if (!$(GetElevation)) {
-        Write-Error "The $($MyInvocation.MyCommand.Name) function must be ran from an elevated PowerShell Session (i.e. 'Run as Administrator')! Halting!"
-        $global:FunctionResult = "1"
-        return
-    }
-
-    try {
-        #$null = clist --local-only
-        $PackageManagerInstallObjects = Get-PackageManagerInstallObjects -ProgramName $ProgramName -ErrorAction SilentlyContinue
-        [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
-        [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
-        [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
-    }
-    catch {
-        Write-Error $_
-        $global:FunctionResult = "1"
-        return
-    }
-
-    #endregion >> Variable/Parameter Transforms and PreRun Prep
-    
-
-    #region >> Main Body
-    if ($ChocolateyInstalledProgramObjects.Count -eq 0 -and $PSGetInstalledPackageObjects.Count -eq 0) {
-        Write-Error "Unable to find an installed program matching the name $ProgramName! Halting!"
-        $global:FunctionResult = "1"
-        return
-    }
-
-    # We MIGHT be able to get the directory where the Program's binaries are by using Get-Command.
-    # This info is only useful if the uninstall isn't clean for some reason
-    $ProgramExePath = $(Get-Command $ProgramName -ErrorAction SilentlyContinue).Source
-    if ($ProgramExePath) {
-        $ProgramParentDirPath = $ProgramExePath | Split-Path -Parent
-    }
-
-    if ($PSGetInstalledPackageObjects.Count -gt 0) {
-        [System.Collections.ArrayList]$PSGetUninstallFailures = @()
-            
-        # Make sure that we uninstall Packages where 'ProviderName' is 'Programs' LAST
-        foreach ($Package in $PSGetInstalledPackageObjects) {
-            if ($Package.ProviderName -ne "Programs") {
-                Write-Host "Uninstalling $($Package.Name)..."
-                $UninstallResult = $Package | Uninstall-Package -Force -Confirm:$False -ErrorAction SilentlyContinue
-            }
-        }
-        foreach ($Package in $PSGetInstalledPackageObjects) {
-            if ($Package.ProviderName -eq "Programs") {
-                Write-Host "Uninstalling $($Package.Name)..."
-                $UninstallResult = $Package | Uninstall-Package -Force -Confirm:$False -ErrorAction SilentlyContinue
-            }
-        }
-    }
-
-    try {
-        $PackageManagerInstallObjects = Get-PackageManagerInstallObjects -ProgramName $ProgramName -ErrorAction Stop
-        [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
-        [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
-        [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
-    }
-    catch {
-        Write-Error $_
-        $global:FunctionResult = "1"
-        return
-    }
-
-    # If we still have lingering packages, we need to try uninstall via what the Registry says the uninstall command is...
-    if ($PSGetInstalledPackageObjects.Count -gt 0) {
-        if ($RegistryProperties.Count -gt 0) {
-            foreach ($Program in $RegistryProperties) {
-                if ($Program.QuietUninstallString -ne $null) {
-                    Invoke-Expression "& $($Program.QuietUninstallString)"
-                }
-            }
-        }
-    }
-
-    try {
-        $PackageManagerInstallObjects = Get-PackageManagerInstallObjects -ProgramName $ProgramName -ErrorAction Stop
-        [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
-        [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
-        [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
-    }
-    catch {
-        Write-Error $_
-        $global:FunctionResult = "1"
-        return
-    }
-
-    # If we STILL have lingering packages, we'll just delete from the registry directly and clean up any binaries on the filesystem...
-    if ($PSGetInstalledPackageObjects.Count -gt 0) {
-        if ($RegistryProperties.Count -gt 0) {
-            foreach ($Program in $RegistryProperties) {
-                if (Test-Path $Program.PSPath) {
-                    Remove-Item -Path $Program.PSPath -Recurse -Force
-                }
-            }
-        }
-
-        if ($ProgramParentDirPath) {
-            if (Test-Path $ProgramParentDirPath) {
-                Remove-Item $ProgramParentDirPath -Recurse -Force
-            }
-        }
-    }
-
-    try {
-        $PackageManagerInstallObjects = Get-PackageManagerInstallObjects -ProgramName $ProgramName -ErrorAction Stop
-        [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
-        [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
-        [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
-    }
-    catch {
-        Write-Error $_
-        $global:FunctionResult = "1"
-        return
-    }
-
-    # Now take care of chocolatey if necessary...
-    if ($ChocolateyInstalledProgramObjects.Count -gt 0) {
-        $ChocoUninstallAttempt = $True
-        [System.Collections.ArrayList]$ChocoUninstallFailuresPrep = @()
-        [System.Collections.ArrayList]$ChocoUninstallSuccesses = @()
-
-        $ErrorFile = [IO.Path]::Combine([IO.Path]::GetTempPath(), [IO.Path]::GetRandomFileName())
-        #$ErrorFile
-        foreach ($ProgramObj in $ChocolateyInstalledProgramObjects) {
-            #Write-Host "Running $($(Get-Command choco).Source) uninstall $($ProgramObj.ProgramName) -y"
-            $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
-            #$ProcessInfo.WorkingDirectory = $BinaryPath | Split-Path -Parent
-            $ProcessInfo.FileName = $(Get-Command choco).Source
-            $ProcessInfo.RedirectStandardError = $true
-            $ProcessInfo.RedirectStandardOutput = $true
-            $ProcessInfo.UseShellExecute = $false
-            $ProcessInfo.Arguments = "uninstall $($ProgramObj.ProgramName) -y --force" # optionally -n --remove-dependencies
-            $Process = New-Object System.Diagnostics.Process
-            $Process.StartInfo = $ProcessInfo
-            $Process.Start() | Out-Null
-            # Below $FinishedInAlottedTime returns boolean true/false
-            $FinishedInAlottedTime = $Process.WaitForExit(60000)
-            if (!$FinishedInAlottedTime) {
-                $Process.Kill()
-            }
-            $stdout = $Process.StandardOutput.ReadToEnd()
-            $stderr = $Process.StandardError.ReadToEnd()
-            $AllOutput = $stdout + $stderr
-
-            if ($AllOutput -match "failed") {
-                $null = $ChocoUninstallFailuresPrep.Add($ProgramObj)
-            }
-            else {
-                $null = $ChocoUninstallSuccesses.Add($ProgramObj)
-            }
-        }
-    }
-
-    # Re-Check all PackageManager Objects because an uninstall action may/may not have happened
-    try {
-        $PackageManagerInstallObjects = Get-PackageManagerInstallObjects -ProgramName $ProgramName -ErrorAction Stop
-        [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
-        [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
-        [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
-    }
-    catch {
-        Write-Error $_
-        $global:FunctionResult = "1"
-        return
-    }
-
-    if ($ChocolateyInstalledProgramObjects.Count -gt 0 -or $PSGetInstalledPackageObjects.Count -gt 0 -or $RegistryProperties.Count -gt 0) {
-        Write-Warning "The program '$ProgramName' did NOT cleanly uninstall. Please review output of the Uninstall-Program function for details about lingering references."
-    }
-    else {
-        Write-Host "The program '$ProgramName' was uninstalled successfully!" -ForegroundColor Green
-    }
-
-    [pscustomobject]@{
-        ChocolateyInstalledProgramObjects   = [array]$ChocolateyInstalledProgramObjects
-        PSGetInstalledPackageObjects        = [array]$PSGetInstalledPackageObjects
-        RegistryProperties                  = [array]$RegistryProperties
-    }
-
-    #endregion >> Main Body
 }
 
 
@@ -2175,8 +2175,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUc3lhm1oCv8agpEngqQRRpKLz
-# bJagggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUaQ5VQyTUk7Xu1NwZAgTvL5CP
+# Moygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -2233,11 +2233,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFBw8Hh3BzuC1bbyw
-# NWrFOnIeshVRMA0GCSqGSIb3DQEBAQUABIIBAIvbc3Alnj1lwj8c2kDTebHLrtch
-# Nkr/S+jID+uJ8Nw+7x86zznbpVGct+BdeDk4mRw0IystDkwVdIH6iTAybejjdzGe
-# OoRPWD3IsedWwAvfLRzeRxXuiui4V3KnWkI8Qu2uoLYnhoMW9Q7A3sTaoG0Z0eHk
-# cIq0sADd+821cg5zx/sgF8LKX1yGFcVUfWr7yU8WK/BLfUAvCAlUL0jZFEa9Dvvb
-# FJm+uCML8qom8QtgkffI9iuA9StcR2tkREAnCIBDCiOZVAmFkXpvBeKkKZiCWxWF
-# ApaHpVjzaeyzEMxA96D3uFZXX64SNOITkXnn4sNH8bZPog5BoxRjJImMpnA=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFLhBY25MKnV9WOyr
+# NG6rXMeW0lj7MA0GCSqGSIb3DQEBAQUABIIBAH3FRbqM5qQXOvz2YXsyGMPTwryg
+# eYugqr+xlU1vHyW3zEYoupBFJpK5XdI/SrK8h29AD1aNIuMGoWn4FSLzH79QTrMM
+# LkuuYNvKlq4E9KKyHbEH1nOPW9Ui/AQC0FBMJ9crT8lmIzyLy4tFU2vB2IH+a5CK
+# vfN3j4D0lmLtYdEJj1E+nwRE/ruURwK+F7C+LUp8+H0wEdqz42BTSOoIJrWCwpZW
+# Zpa0bDuT1GDmHdKe60xZxYoj54PE+8lbCmvtAnLUFOvHdMC/cjfzjUvSrFE/oVVU
+# 7O6Gv88NZoo68ZNdrvU9wWf+61tfkkRxJefqaMrw0AqgM8i0+9BzD0Ilpho=
 # SIG # End signature block

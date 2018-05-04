@@ -1,4 +1,23 @@
-function Check-InstalledPrograms {
+<#
+    .SYNOPSIS
+        This function gathers information about a particular installed program from the Windows Registry.
+
+        If you're looking for detailed information about a Program, or if you're looking to generate a list
+        that closely resembles what you see in the 'Control Panel' 'Programs and Features' GUI, use this function.
+
+    .DESCRIPTION
+        See .SYNOPSIS
+
+    .PARAMETER ProgramTitleSearchTerm
+        This parameter is MANDATORY.
+
+        This parameter takes a string that loosely matches the Program Name that you would like
+        to gather information about. Do NOT use regex with this parameter.
+
+    .EXAMPLE
+        Get-AllPackageInfo openssh
+#>
+function Get-InstalledProgramsFromRegistry {
     [CmdletBinding(
         PositionalBinding=$True,
         DefaultParameterSetName='Default Param Set'
@@ -21,7 +40,6 @@ function Check-InstalledPrograms {
             ParameterSetName='Secondary Param Set'
         )]
         [switch]$AllADWindowsComputers
-
     )
 
     ##### BEGIN Variable/Parameter Transforms and PreRun Prep #####
@@ -94,8 +112,8 @@ function Check-InstalledPrograms {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUZZDChfSFK8NvuZ9iWDv1boR5
-# 4z+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUwCOHxDNxcRzro2u97cNOsMPu
+# EYCgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -152,11 +170,11 @@ function Check-InstalledPrograms {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFJhAgIDO17WAyo7j
-# nADW+Qe9iAUeMA0GCSqGSIb3DQEBAQUABIIBAGskJMoQmkq4ukswrwD0HqtsJ/nR
-# 2zoUlAoLn9YkGOhmHw6ufFjsesntHcOxDiKvA5eTVzJuLfCJLXz1wt2GdPXXEB3l
-# Tk8W8legu62uLtWSM0SO/bZq4VWmWOdFTWKfssDZbLhDIRTDTtbAzRgtSWRSZn+h
-# ibq37B9tdviZRjnQ8ENAi7hBwsYm9zXfGEX5tevwZY5yv/Fio+S+yeoy7uaPvhya
-# WExHoQqoRR415yHtxy1iGKb4+IdeMQ7ROv4DDDllbQWmwQxTXEuKw6j9y/k2SugW
-# +pTQGDY0jLrZDzHd1IN9zZf+k/q1UDB/ooc/ojRTj7Jp9irG3vISWIEADJo=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFPM7FLQzVU67QfgL
+# P+yQ0ppz3BVrMA0GCSqGSIb3DQEBAQUABIIBAFJiMYylGliSb9DDpudNmOzJxvMz
+# sIFIKsCVs+q7Ox1vzUfvwsq0WZWK+S8BZJ6i5VuJwONMo8dt+h9HXu1HR06crRRs
+# lb3XE2YI7W/+ifIAxFNyIpg9NSk48CyGY/3zW8T+zSf5vrFcW2mD771TLnS9vc57
+# 3y8HVTsYtBeleVdmHVrFFO96nE0Yd7DwMpl0SJjsCU1Z+gWuTSJnxB3nM1yVx3SF
+# F6DUl2W6MyzuIohJBy0BxNPvqEXfhkB/IidO10uagwFEM5rNQIEPuOv9DZtoJulQ
+# 7BQ93P97w3aXl0NkW6INeqz5wNQdzfDwMt9vVoXP0z3upyUnjrAsUKGdFM0=
 # SIG # End signature block

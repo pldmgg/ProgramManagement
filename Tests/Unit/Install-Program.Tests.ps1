@@ -230,12 +230,6 @@ $TestSplatParams = @(
     }
 
     @{
-        ProgramName                 = "openssh"
-        CommandName                 = "ssh"
-        NoUpdatePackageManagement   = $False
-    }
-
-    @{
         ProgramName             = "openssh"
         CommandName             = "ssh"
         ExpectedInstallLocation = "C:\Program Files\OpenSSH-Win64"
@@ -300,33 +294,27 @@ $SplatParamsSeries = @(
         TestSeriesFunctionNames = @("CommonTestSeries")
     }
     [pscustomobject]@{
-        TestSeriesName          = "ProgramName and CommandName and NoUpdatePackageManagement is False"
-        TestSeriesDescription   = "Test output using: $ProgramAndCmdNameString -NoUpdatePackageManagement:`$False"
-        TestSeriesSplatParams   = $TestSplatParams[6]
-        TestSeriesFunctionNames = @("CommonTestSeries")
-    }
-    [pscustomobject]@{
         TestSeriesName          = "ProgramName and CommandName and ExpectedInstallLocation"
         TestSeriesDescription   = "Test output using: $ProgramAndCmdNameString -ExpectedInstallLocation 'C:\Program Files\OpenSSH-Win64'"
-        TestSeriesSplatParams   = $TestSplatParams[7]
+        TestSeriesSplatParams   = $TestSplatParams[6]
         TestSeriesFunctionNames = @("CommonTestSeries")
     }
     [pscustomobject]@{
         TestSeriesName          = "ProgramName and CommandName and PowerShellGet"
         TestSeriesDescription   = "Test output using: $ProgramAndCmdNameString -UserPowerShellGet"
-        TestSeriesSplatParams   = $TestSplatParams[8]
+        TestSeriesSplatParams   = $TestSplatParams[7]
         TestSeriesFunctionNames = @("CommonTestSeries")
     }
     [pscustomobject]@{
         TestSeriesName          = "ProgramName and CommandName and PowerShellGet and ForceChocolateyInstallScript"
         TestSeriesDescription   = "Test output using: $ProgramAndCmdNameString -UserPowerShellGet -ForceChocoInstallScript"
-        TestSeriesSplatParams   = $TestSplatParams[9]
+        TestSeriesSplatParams   = $TestSplatParams[8]
         TestSeriesFunctionNames = @("CommonTestSeries")
     }
     [pscustomobject]@{
         TestSeriesName          = "ProgramName and CommandName and PowerShellGet and UseChocolateyCmdLine"
         TestSeriesDescription   = "Test output using: $ProgramAndCmdNameString -UseChocolateyCmdLine"
-        TestSeriesSplatParams   = $TestSplatParams[10]
+        TestSeriesSplatParams   = $TestSplatParams[9]
         TestSeriesFunctionNames = @("CommonTestSeries")
     }
 )
@@ -371,81 +359,6 @@ InModuleScope ProgramManagement {
             $ContextSB.InvokeReturnAsIs()
             $i++
         }
-        
-
-        <#
-        $ContextInfo = $global:MockResources['SplatParamsSeries'][1].TestSeriesName
-        $global:ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
-        Context $global:ContextStringBuilder {
-            $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
-            Mock 'GetElevation' -MockWith {$True}
-            StartTesting -SplatParamsSeriesItem $global:MockResources['SplatParamsSeries'][1] -ContextString $global:ContextStringBuilder
-        }
-
-        $ContextInfo = $global:MockResources['SplatParamsSeries'][2].TestSeriesName
-        $global:ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
-        Context $global:ContextStringBuilder {
-            $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
-            Mock 'GetElevation' -MockWith {$True}
-            StartTesting -SplatParamsSeriesItem $global:MockResources['SplatParamsSeries'][2] -ContextString $global:ContextStringBuilder
-        }
-
-        $ContextInfo = $global:MockResources['SplatParamsSeries'][3].TestSeriesName
-        $global:ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
-        Context $global:ContextStringBuilder {
-            $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
-            Mock 'GetElevation' -MockWith {$True}
-            StartTesting -SplatParamsSeriesItem $global:MockResources['SplatParamsSeries'][3] -ContextString $global:ContextStringBuilder
-        }
-
-        $ContextInfo = $global:MockResources['SplatParamsSeries'][4].TestSeriesName
-        $global:ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
-        Context $global:ContextStringBuilder {
-            $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
-            Mock 'GetElevation' -MockWith {$True}
-            StartTesting -SplatParamsSeriesItem $global:MockResources['SplatParamsSeries'][4] -ContextString $global:ContextStringBuilder
-        }
-
-        $ContextInfo = $global:MockResources['SplatParamsSeries'][5].TestSeriesName
-        $global:ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
-        Context $global:ContextStringBuilder {
-            $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
-            Mock 'GetElevation' -MockWith {$True}
-            StartTesting -SplatParamsSeriesItem $global:MockResources['SplatParamsSeries'][5] -ContextString $global:ContextStringBuilder
-        }
-
-        $ContextInfo = $global:MockResources['SplatParamsSeries'][6].TestSeriesName
-        $global:ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
-        Context $global:ContextStringBuilder {
-            $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
-            Mock 'GetElevation' -MockWith {$True}
-            StartTesting -SplatParamsSeriesItem $global:MockResources['SplatParamsSeries'][6] -ContextString $global:ContextStringBuilder
-        }
-
-        $ContextInfo = $global:MockResources['SplatParamsSeries'][7].TestSeriesName
-        $global:ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
-        Context $global:ContextStringBuilder {
-            $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
-            Mock 'GetElevation' -MockWith {$True}
-            StartTesting -SplatParamsSeriesItem $global:MockResources['SplatParamsSeries'][7] -ContextString $global:ContextStringBuilder
-        }
-
-        $ContextInfo = $global:MockResources['SplatParamsSeries'][8].TestSeriesName
-        $global:ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
-        Context $global:ContextStringBuilder {
-            $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
-            Mock 'GetElevation' -MockWith {$True}
-            StartTesting -SplatParamsSeriesItem $global:MockResources['SplatParamsSeries'][8] -ContextString $global:ContextStringBuilder
-        }
-
-        $ContextInfo = $global:MockResources['SplatParamsSeries'][9].TestSeriesName
-        $global:ContextStringBuilder = "Elevated PowerShell Session w/ $ContextInfo"
-        Context $global:ContextStringBuilder {
-            $global:MockResources['Functions'] | foreach { Invoke-Expression $_ }
-            Mock 'GetElevation' -MockWith {$True}
-            StartTesting -SplatParamsSeriesItem $global:MockResources['SplatParamsSeries'][9] -ContextString $global:ContextStringBuilder
-        }
-        #>
     }
 }
 

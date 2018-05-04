@@ -60,12 +60,12 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
         $Commands -contains 'GetNativePath' | Should Be $False
         $Commands -contains 'PauseForWarning' | Should Be $False
 
-        $Commands -contains 'Check-InstalledPrograms' | Should Be $True
-        $Commands -contains 'Get-PackageManagerInstallObjects' | Should Be $True
+        $Commands -contains 'Get-AllPackageInfo' | Should Be $True
+        $Commands -contains 'Get-InstalledProgramsFromRegistry' | Should Be $True
         $Commands -contains 'Install-ChocolateyCmdLine' | Should Be $True
         $Commands -contains 'Install-Program' | Should Be $True
-        $Commands -contains 'Refresh-ChocolateyEnv' | Should Be $True
         $Commands -contains 'Uninstall-Program' | Should Be $True
+        $Commands -contains 'Update-ChocolateyEnv' | Should Be $True
         $Commands -contains 'Update-PackageManagement' | Should Be $True
     }
 

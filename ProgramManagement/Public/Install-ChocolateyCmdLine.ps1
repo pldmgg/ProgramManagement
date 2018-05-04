@@ -1,8 +1,28 @@
+<#
+    .SYNOPSIS
+        Installs the Chocolatey Command Line (i.e. choco.exe and related binaries)
+
+    .DESCRIPTION
+        See .SYNOPSIS
+
+    .PARAMETER NoUpdatePackageManagement
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. Use it to update PowerShellGet/PackageManagement Modules prior to attempting
+        Chocolatey CmdLine install.
+
+    .EXAMPLE
+        Install-ChocolateyCmdLine
+
+    .EXAMPLE
+        Install-ChocolateyCmdLine -UpdatePackageManagement
+
+#>
 function Install-ChocolateyCmdLine {
     [CmdletBinding()]
     Param (
         [Parameter(Mandatory=$False)]
-        [switch]$NoUpdatePackageManagement
+        [switch]$UpdatePackageManagement
     )
 
     ##### BEGIN Variable/Parameter Transforms and PreRun Prep #####
@@ -19,7 +39,7 @@ function Install-ChocolateyCmdLine {
     $global:FunctionResult = "0"
     $MyFunctionsUrl = "https://raw.githubusercontent.com/pldmgg/misc-powershell/master/MyFunctions"
 
-    if (!$NoUpdatePackageManagement) {
+    if ($UpdatePackageManagement) {
         if (![bool]$(Get-Command Update-PackageManagement -ErrorAction SilentlyContinue)) {
             $UpdatePMFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Update-PackageManagement.ps1"
             try {
@@ -47,14 +67,14 @@ function Install-ChocolateyCmdLine {
         }
     }
 
-    if (![bool]$(Get-Command Refresh-ChocolateyEnv -ErrorAction SilentlyContinue)) {
-        $RefreshCEFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Refresh-ChocolateyEnv.ps1"
+    if (![bool]$(Get-Command Update-ChocolateyEnv -ErrorAction SilentlyContinue)) {
+        $RefreshCEFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Update-ChocolateyEnv.ps1"
         try {
             Invoke-Expression $([System.Net.WebClient]::new().DownloadString($RefreshCEFunctionUrl))
         }
         catch {
             Write-Error $_
-            Write-Error "Unable to load the Refresh-ChocolateyEnv function! Halting!"
+            Write-Error "Unable to load the Update-ChocolateyEnv function! Halting!"
             $global:FunctionResult = "1"
             return
         }
@@ -101,17 +121,17 @@ function Install-ChocolateyCmdLine {
         try {
             Write-Host "Refreshing `$env:Path..."
             $global:FunctionResult = "0"
-            $null = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
+            $null = Update-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
             
             if ($RCEErr.Count -gt 0 -and
             $global:FunctionResult -eq "1" -and
             ![bool]$($RCEErr -match "Neither the Chocolatey PackageProvider nor the Chocolatey CmdLine appears to be installed!")) {
-                throw "The Refresh-ChocolateyEnv function failed! Halting!"
+                throw "The Update-ChocolateyEnv function failed! Halting!"
             }
         }
         catch {
             Write-Error $_
-            Write-Host "Errors from the Refresh-ChocolateyEnv function are as follows:"
+            Write-Host "Errors from the Update-ChocolateyEnv function are as follows:"
             Write-Error $($RCEErr | Out-String)
             $global:FunctionResult = "1"
             return
@@ -175,25 +195,25 @@ function Install-ChocolateyCmdLine {
             $PMPGetInstall = $False
         }
         
-        # If we STILL can't find choco.exe, then Refresh-ChocolateyEnv a third time...
+        # If we STILL can't find choco.exe, then Update-ChocolateyEnv a third time...
         #if (![bool]$($env:Path -split ";" -match "chocolatey\\bin")) {
         if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
-            # ...and then find it again and add it to $env:Path via Refresh-ChocolateyEnv function
+            # ...and then find it again and add it to $env:Path via Update-ChocolateyEnv function
             if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
                 try {
                     Write-Host "Refreshing `$env:Path..."
                     $global:FunctionResult = "0"
-                    $null = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
+                    $null = Update-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
                     
                     if ($RCEErr.Count -gt 0 -and
                     $global:FunctionResult -eq "1" -and
                     ![bool]$($RCEErr -match "Neither the Chocolatey PackageProvider nor the Chocolatey CmdLine appears to be installed!")) {
-                        throw "The Refresh-ChocolateyEnv function failed! Halting!"
+                        throw "The Update-ChocolateyEnv function failed! Halting!"
                     }
                 }
                 catch {
                     Write-Error $_
-                    Write-Host "Errors from the Refresh-ChocolateyEnv function are as follows:"
+                    Write-Host "Errors from the Update-ChocolateyEnv function are as follows:"
                     Write-Error $($RCEErr | Out-String)
                     $global:FunctionResult = "1"
                     return
@@ -222,14 +242,14 @@ function Install-ChocolateyCmdLine {
             try {
                 Write-Host "Refreshing `$env:Path..."
                 $global:FunctionResult = "0"
-                $null = Refresh-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
+                $null = Update-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
                 if ($RCEErr.Count -gt 0 -and $global:FunctionResult -eq "1") {
-                    throw "The Refresh-ChocolateyEnv function failed! Halting!"
+                    throw "The Update-ChocolateyEnv function failed! Halting!"
                 }
             }
             catch {
                 Write-Error $_
-                Write-Host "Errors from the Refresh-ChocolateyEnv function are as follows:"
+                Write-Host "Errors from the Update-ChocolateyEnv function are as follows:"
                 Write-Error $($RCEErr | Out-String)
                 $global:FunctionResult = "1"
                 return
@@ -259,8 +279,8 @@ function Install-ChocolateyCmdLine {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU8sorQISIqRUwduESANwusRyL
-# XNmgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUfuwQMlwPYXtUv9EYH3BSyhlZ
+# sFigggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -317,11 +337,11 @@ function Install-ChocolateyCmdLine {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFL5IGC3wzgMt1D8G
-# 4QJVQdCkTZVBMA0GCSqGSIb3DQEBAQUABIIBAG0BD71/ZVpLhRffBSvXmQAP69lT
-# 1NshrqV8e9d4j4fVA9+64nR9cexDvq/8TmiArAQk/r2qZxY5SdrYAsiRuu333Vaq
-# Um6USoJ5VqKq1sBXPfQ7LdgPepd7jguFBNDvKMmHhp0L3OG9CEvl58EB8vsIIE5F
-# p+TPRDlisaMTuQRZNhBfDjyxdpIWB6a961DgYJlPWQljuyO54TOAt9F/LOqy4s3M
-# 5mVVQfgeJ02q+ub2kXrztciaSf8R4ExxxwZmLfGhIS8fstEatYRqXB9J4nvYMbz/
-# cpv5nSNx9mW4aLVDvBrK1oRaJPgl6xJWjqfeJxyt3i5GYKGvJGQ1SIfLxlE=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFIxcYM+HeOz5F4DH
+# K27Ha48lDm2RMA0GCSqGSIb3DQEBAQUABIIBACJrjqxMcgiRl6wCdiaXRCSf28Md
+# 2YQINBEAoIhd5n9LzDYTfIsg54hpHsACI21MeuCa6cf4x2Y/BfdbqjVTDVZbapFy
+# 7p9P5uQhhy/tBzwiAEKCrNRdAy9nO08IdZXCKuU5I+J8U0ezx5b/S+pmkJ+SaT8X
+# eHDVauy0MjXUx2EQz4k1XFiLYtuuTnaYyf0PC5qaE7uePdF2zFUdM2JkTTidTSsQ
+# L60xKpT6NC7kOxFl3/VT2pR+358Mk7+4OluGa5tUzYqohg60fP4dv3nr98vDlepN
+# UqfR+Ha44gewadCJTaExsdIRaSHzTA+d8A+VF7rBUoUbJ1r21oVQIR33BCY=
 # SIG # End signature block

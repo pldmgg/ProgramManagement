@@ -1,7 +1,32 @@
-function Get-PackageManagerInstallObjects {
+<#
+    .SYNOPSIS
+        This function gathers information about a particular installed program from 3 different sources:
+            - The Get-Package Cmdlet fromPowerShellGet/PackageManagement Modules
+            - Chocolatey CmdLine (if it is installed)
+            - Windows Registry
+
+        All of this information is needed in order to determine the proper way to install/uninstall a program.
+
+    .DESCRIPTION
+        See .SYNOPSIS
+
+    .PARAMETER ProgramName
+        This parameter is MANDATORY.
+
+        This parameter takes a string that represents the name of the Program that you would like to gatehr information about.
+        The name of the program does NOT have to be exact. For example, if you have 'python3' installed, you can simply use:
+            Get-AllPackageInfo python
+
+    .EXAMPLE
+        Get-AllPackageInfo openssh
+#>
+function Get-AllPackageInfo {
     [CmdletBinding()]
     Param (
-        [Parameter(Mandatory=$True)]
+        [Parameter(
+            Mandatory=$True,
+            Position=0
+        )]
         [string]$ProgramName
     )
 
@@ -21,7 +46,7 @@ function Get-PackageManagerInstallObjects {
         # This info will come in handy if there's a specific order related packages needed to be uninstalled in so that it's clean.
         # (In other words, with this info, we can sort by when specific packages were installed, and uninstall latest to earliest
         # so that there aren't any race conditions)
-        [array]$CheckInstalledPrograms = Check-InstalledPrograms -ProgramTitleSearchTerm $PNRegex
+        [array]$CheckInstalledPrograms = Get-InstalledProgramsFromRegistry -ProgramTitleSearchTerm $PNRegex
         $WindowsInstallerMSIs = Get-ChildItem -Path "C:\Windows\Installer" -File
         $RelevantMSIFiles = foreach ($FileItem in $WindowsInstallerMSIs) {
             $MSIProductName = GetMSIFileInfo -Path $FileItem.FullName -Property ProductName -WarningAction SilentlyContinue
@@ -112,8 +137,8 @@ function Get-PackageManagerInstallObjects {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU3StwjbEUZMG5VXWbShK8MSdF
-# fnCgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUVcTDOuBTG07TCBPBSje8ZvmE
+# 096gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -170,11 +195,11 @@ function Get-PackageManagerInstallObjects {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFFOYrxEHiRQJaJeo
-# UGchkR+PNkBRMA0GCSqGSIb3DQEBAQUABIIBAJGbB0pNAM7srbuAFxpyEKIa3NdQ
-# Eya4t1G+6RFNjuP4zBSdbUKrlJm9MuAStBEnuUazY9l7MYDc2EMN+edhiQFnTF4o
-# Ckc0vnsP1nuancpVzO/smRuuskQtr36oUmVd2Ygci3xS5n445+0+yg+uHyi9eMrv
-# NwVG9A7K2VacYvWqO4/TnGqANzLZzpvSKkbPHqhTz81X/YIaGCQGEq6ChQqTwcyo
-# CVNnfQXMfsTWmiphMOWmerdkde4VeGUP0jEyb3H3REnOQK9mLI3AErUSHfIGj4ak
-# PfWYsbgLwBbQZgL2Yd1K7td1ZL2Oj5HTNntaeODhZTYs1g3J7DPsuPHl83k=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFI1q/f0jiEDGjNFY
+# tXgnTmPkP+SpMA0GCSqGSIb3DQEBAQUABIIBAIdr5AqFo3+y5myWCLyXe/8gX03V
+# 6URCCaycCKnN/s1wdIDa20Wo/gryfOpnSAqt3Zfm8ZFNK4/Ed4QFjeiBy23DS65E
+# 00qom7tSo2KOmgmSJIOlBM5rWthUojf0L8t3A9mAyWPlSC90VzO8lmVpmUQm4kkV
+# ETP84Kq817RJFm6OwGipCQm6jDyOX6B59TOIkn/wAWnt0ExgYxLeBi1qwJ3oaeHG
+# lrjxKfY+RtTxDuUkQ9jaZVC3TqJaNtmjQS25qucLsN06bCYZtnAQE/ZRC8FFBQJ2
+# kkTBtX7vYQwUzUGWmBXkxiSVNJVhje8ijimXoZw1AAlfB6tbfeDqWCkMwLI=
 # SIG # End signature block

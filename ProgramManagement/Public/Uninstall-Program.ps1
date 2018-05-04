@@ -1,3 +1,23 @@
+<#
+    .SYNOPSIS
+        Installs the Chocolatey Command Line (i.e. choco.exe and related binaries)
+
+    .DESCRIPTION
+        See .SYNOPSIS
+
+    .PARAMETER NoUpdatePackageManagement
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. Use it to update PowerShellGet/PackageManagement Modules prior to attempting
+        Chocolatey CmdLine install.
+
+    .EXAMPLE
+        Install-ChocolateyCmdLine
+
+    .EXAMPLE
+        Install-ChocolateyCmdLine -UpdatePackageManagement
+
+#>
 function Uninstall-Program {
     [CmdletBinding()]
     Param (
@@ -18,7 +38,7 @@ function Uninstall-Program {
 
     try {
         #$null = clist --local-only
-        $PackageManagerInstallObjects = Get-PackageManagerInstallObjects -ProgramName $ProgramName -ErrorAction SilentlyContinue
+        $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction SilentlyContinue
         [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
         [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
         [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
@@ -65,7 +85,7 @@ function Uninstall-Program {
     }
 
     try {
-        $PackageManagerInstallObjects = Get-PackageManagerInstallObjects -ProgramName $ProgramName -ErrorAction Stop
+        $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction Stop
         [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
         [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
         [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
@@ -88,7 +108,7 @@ function Uninstall-Program {
     }
 
     try {
-        $PackageManagerInstallObjects = Get-PackageManagerInstallObjects -ProgramName $ProgramName -ErrorAction Stop
+        $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction Stop
         [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
         [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
         [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
@@ -117,7 +137,7 @@ function Uninstall-Program {
     }
 
     try {
-        $PackageManagerInstallObjects = Get-PackageManagerInstallObjects -ProgramName $ProgramName -ErrorAction Stop
+        $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction Stop
         [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
         [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
         [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
@@ -168,7 +188,7 @@ function Uninstall-Program {
 
     # Re-Check all PackageManager Objects because an uninstall action may/may not have happened
     try {
-        $PackageManagerInstallObjects = Get-PackageManagerInstallObjects -ProgramName $ProgramName -ErrorAction Stop
+        $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction Stop
         [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
         [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
         [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
@@ -198,8 +218,8 @@ function Uninstall-Program {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUTDlRRsRgNS7eZu/8cTZlDMZ5
-# 3/ygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU2jKdmhQnSe9thTZo8BLoKP5g
+# n3Ggggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -256,11 +276,11 @@ function Uninstall-Program {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFDi1YJoFuZEIxW5z
-# LVk8jn9WNRduMA0GCSqGSIb3DQEBAQUABIIBAG/BAKcJIMvZ9NmeejlW2joXrnKF
-# SjI2Q74eLQMx7hlI2uKBBLV8bVP2BEdUIL0X6RjKVHymoaVpNtVyAsIiBG3gATl7
-# LkeeufZGrgIYf27jUiuuGpHE9jMp7gH0mas2UCBzzhJv4Uw9DtQ6Q5opZzXKkiRi
-# lGA420570YFZpMlrHa+BwX5atyAy/l90AGBVVAXQDvEyoaXffi3z5p+x/3AImoBC
-# pP+UfJUm64+B0CO/abzvmDX5AxKNVYxhxgx0WpCoSmtfhJg/LOR/RZuk6+x1dsd7
-# Wy10R2hlCpkujpZQicSZ4GPwYS9Oi0duZbogzQGXChCE385sbO4VUzDXyC4=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFO7WtVdvmWXd25wj
+# lwIGSpKXRUGTMA0GCSqGSIb3DQEBAQUABIIBAKmQsbsZN0nHThNKsl92QYzfwyiE
+# Kv3xxiT6LffmWw16MQwsGpkQ/td1+XtnaiuM68IKqyPsWo4+fdSVZiYtoqYFXcc7
+# 0eQuvuq1td2aMFqS12ukYA0q2xjQOwpsHP3s0JD+egrOeo6zhb0D9HzMnXgov2Jd
+# bwjNCq4uc2vuJKIA1p8vN1sW0I3EZtyz+w6+R7ftqJz5CLtZHW7YUkVYqAMwUJ0R
+# Wj918UWl2HxoRAHiNPSDY1tgjWBa+maVgsRdPu66O9rf8EO7w8UWPrfLIzY9oafQ
+# gDfSjc1FdzyyulrQj1gAeD9QsgS/hdHSGLLSoS2z7p+MRCLrxW3crUdMSvs=
 # SIG # End signature block
