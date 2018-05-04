@@ -12,7 +12,7 @@
 RootModule = 'ProgramManagement.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.8.1'
+ModuleVersion = '0.8.2'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -30,7 +30,7 @@ CompanyName = 'Boop'
 Copyright = '(c) 2018 pldmgg. All rights reserved.'
 
 # Description of the functionality provided by this module
-Description = 'This Module makes it easier to Install/Uninstall programs on Windows, regardless of the method of installation (PSGet, Chocolatey CmdLine, .msi, etc)'
+Description = 'This Module makes it easier to Install/Uninstall programs on Windows, regardless of the method of installation (PSGet, Chocolatey CmdLine, .msi, etc). GitHub: https://github.com/pldmgg/ProgramManagement'
 
 # Minimum version of the Windows PowerShell engine required by this module
 PowerShellVersion = '5.1'
@@ -116,7 +116,7 @@ PrivateData = @{
 } # End of PrivateData hashtable
 
 # HelpInfo URI of this module
-HelpInfoURI = 'http://pldmgg.github.io/ProgramManagement'
+HelpInfoURI = 'https://github.com/pldmgg/ProgramManagement'
 
 # Default prefix for commands exported from this module. Override the default prefix using Import-Module -Prefix.
 # DefaultCommandPrefix = ''

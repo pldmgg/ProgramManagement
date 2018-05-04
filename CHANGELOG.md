@@ -1,6 +1,10 @@
 # Change log
 
-## 0.8.1 (May 01, 2018)
+## 0.8.2 (May 04, 2018)
+
+- Updated Module Description on PSGallery
+
+## 0.8.1 (May 04, 2018)
 
 - Created
 
