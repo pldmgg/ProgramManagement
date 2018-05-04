@@ -84,17 +84,83 @@ function Uninstall-Program {
         $ProgramParentDirPath = $ProgramExePath | Split-Path -Parent
     }
 
+    [System.Collections.ArrayList]$PSGetUninstallFailures = @()
     if ($PSGetInstalledPackageObjects.Count -gt 0) {
-        [System.Collections.ArrayList]$PSGetUninstallFailures = @()
+        if ($PSGetInstalledPackageObjects.Count -gt 1) {
+            Write-Warning "Multiple packages matching the name '$ProgramName' have been found."
+
+            for ($i=0; $i -lt $PSGetInstalledPackageObjects.Count; $i++) {
+                Write-Host "$i) $($PSGetInstalledPackageObjects[$i].Name)"
+            }
+            Write-Host "$($PSGetInstalledPackageObjects.Count)) All of the Above"
+
+            [int[]]$ValidChoiceNumbers = 0..$($PSGetInstalledPackageObjects.Count)
+            $UninstallChoice = Read-Host -Prompt "Please enter one or more numbers (separated by commas) that correspond to the program(s) you would like to uninstall."
+            if ($UninstallChoice -match ',') {
+                [array]$UninstallChoiceArray = $($UninstallChoice -split ',').Trim()
+            }
+            else {
+                [array]$UninstallChoiceArray = $UninstallChoice
+            }
+
+            [System.Collections.ArrayList]$InvalidChoices = @()
+            foreach ($ChoiceNumber in $UninstallChoiceArray) {
+                if ($ValidChoiceNumbers -notcontains $ChoiceNumber) {
+                    $null = $InvalidChoices.Add($ChoiceNumber)
+                }
+            }
+
+            while ($InvalidChoices.Count -ne 0) {
+                Write-Warning "The following selections are NOT valid Choice Numbers: $($InvalidChoices -join ', ')"
+
+                $UninstallChoice = Read-Host -Prompt "Please enter one or more numbers (separated by commas) that correspond to the program(s) you would like to uninstall."
+                if ($UninstallChoice -match ',') {
+                    [array]$UninstallChoiceArray = $($UninstallChoice -split ',').Trim()
+                }
+                else {
+                    [array]$UninstallChoiceArray = $UninstallChoice
+                }
+
+                [System.Collections.ArrayList]$InvalidChoices = @()
+                foreach ($ChoiceNumber in $UninstallChoiceArray) {
+                    if ($ValidChoiceNumbers -notcontains $ChoiceNumber) {
+                        $null = $InvalidChoices.Add($ChoiceNumber)
+                    }
+                }
+            }
+
+            # Make sure that $UninstallChoiceArray is an integer array sorted 0..N
+            try {
+                [int[]]$UninstallChoiceArray = $UninstallChoiceArray | Sort-Object
+            }
+            catch {
+                Write-Error $_
+                Write-Error "`$UninstallChoiceArray cannot be converted to an array of integers! Halting!"
+                $global:FunctionResult = "1"
+                return
+            }
+
+            if ($UninstallChoiceArray -notcontains $PSGetInstalledPackageObjects.Count) {
+                [array]$FinalPackagesSelectedForUninstall = foreach ($ChoiceNumber in $UninstallChoiceArray) {
+                    $PSGetInstalledPackageObjects[$ChoiceNumber]
+                }
+            }
+            else {
+                [array]$FinalPackagesSelectedForUninstall = $PSGetInstalledPackageObjects
+            }
+        }
+        if ($PSGetInstalledPackageObjects.Count -eq 1) {
+            [array]$FinalPackagesSelectedForUninstall = $PSGetInstalledPackageObjects
+        }
             
         # Make sure that we uninstall Packages where 'ProviderName' is 'Programs' LAST
-        foreach ($Package in $PSGetInstalledPackageObjects) {
+        foreach ($Package in $FinalPackagesSelectedForUninstall) {
             if ($Package.ProviderName -ne "Programs") {
                 Write-Host "Uninstalling $($Package.Name)..."
                 $UninstallResult = $Package | Uninstall-Package -Force -Confirm:$False -ErrorAction SilentlyContinue
             }
         }
-        foreach ($Package in $PSGetInstalledPackageObjects) {
+        foreach ($Package in $FinalPackagesSelectedForUninstall) {
             if ($Package.ProviderName -eq "Programs") {
                 Write-Host "Uninstalling $($Package.Name)..."
                 $UninstallResult = $Package | Uninstall-Package -Force -Confirm:$False -ErrorAction SilentlyContinue
@@ -139,17 +205,21 @@ function Uninstall-Program {
 
     # If we STILL have lingering packages, we'll just delete from the registry directly and clean up any binaries on the filesystem...
     if ($PSGetInstalledPackageObjects.Count -gt 0) {
+        [System.Collections.ArrayList]$DirectoriesThatMightNeedToBeRemoved = @()
+        
         if ($RegistryProperties.Count -gt 0) {
             foreach ($Program in $RegistryProperties) {
                 if (Test-Path $Program.PSPath) {
-                    Remove-Item -Path $Program.PSPath -Recurse -Force
+                    $null = $DirectoriesThatMightNeedToBeRemoved.Add($Program.PSPath)
+                    #Remove-Item -Path $Program.PSPath -Recurse -Force
                 }
             }
         }
 
         if ($ProgramParentDirPath) {
             if (Test-Path $ProgramParentDirPath) {
-                Remove-Item $ProgramParentDirPath -Recurse -Force
+                $null = $DirectoriesThatMightNeedToBeRemoved.Add($ProgramParentDirPath)
+                #Remove-Item $ProgramParentDirPath -Recurse -Force -ErrorAction SilentlyContinue
             }
         }
     }
@@ -225,6 +295,7 @@ function Uninstall-Program {
     }
 
     [pscustomobject]@{
+        DirectoriesThatMightNeedToBeRemoved = $DirectoriesThatMightNeedToBeRemoved
         ChocolateyInstalledProgramObjects   = [array]$ChocolateyInstalledProgramObjects
         PSGetInstalledPackageObjects        = [array]$PSGetInstalledPackageObjects
         RegistryProperties                  = [array]$RegistryProperties
@@ -236,8 +307,8 @@ function Uninstall-Program {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUMysXIaBjCPbK8doaTxshK4OP
-# D4agggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUtD3fSCJ/XR3dPQsAhSBWRBge
+# B+Ggggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -294,11 +365,11 @@ function Uninstall-Program {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFO82+gKaFg/pPVv3
-# tmDBBCfvDi8ZMA0GCSqGSIb3DQEBAQUABIIBAHA53rNkJ3mU9fjA3Ab/HDi9Gymf
-# b5weQYsauiSUOOpIk1e8Ap4mlhoLbIS/D0OOcqpG175DASAPltsiG+bmaWOlDBwo
-# miSOVnWLQwMRigIw5XmolQbY4Nn+4W4l0OXUcVkL+s9HG2fis28X+34wz8Zd/mUq
-# ZmidDblfew19kiPRdwkCRNI39gq9nE2uqJ9rYTXWHkn8QlO0FwDfJtPp0xq63C23
-# DmLLpkrHfeiVxcvcQH7vAAh2cwrcGIZVb2GLFdkLVUsAlPAfVSpzStqwwLN/Q8O9
-# p3bQv5ZXt+5Z8RcjlLz796AX4PApjYXbduBE5jiyqS1mmobUNZiIh6DFH4c=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFPLrfwVCVFJS8S3w
+# BzykTNgTTzw3MA0GCSqGSIb3DQEBAQUABIIBAKQikk43+8IfdMlI0zBW30ZSubny
+# fGPv0R9i2Ql7J+MAIRUnz4itEZdeSCOOCOuXi3sFX+1ozamxJ/TEQVaDUKIPL/Xw
+# sehPkDnojc94cH+XLAVxJt7NX8Cc3yFVjkgitsr/uZeyckG6EX0kqBD4wMuw3aCT
+# 9LBrLor0JY8U5SLiAopgksCqvQaJHqKvoj0nnwrl5eH3TdTV/WiDnXYuqXMZ3wiF
+# IhiASAbKnCrUtPK8VXCFITD/tEvph5VC+/SWJ9BzHw650VdSprP5Mwl/ABQFsV9o
+# uPvyLP+2fqbUBS2zP9sxO6fhwBfWZO1dA3m1D/++eTgouKQw26KK7Wh6Ho4=
 # SIG # End signature block
