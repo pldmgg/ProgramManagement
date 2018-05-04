@@ -1,3 +1,40 @@
+<#
+    .SYNOPSIS
+        This function updates PowerShellGet and PackageManagement Powershell Modules to the latest available versions.
+
+        IMPORTANT NOTE: If the Modules are update, their respective cmdlets MIGHT be broken until you start a new
+        PowerShell Session, so it is recommended that you start a new PowerShell Session after the Modules are updated
+        just to be certain that the cmdlets work as intended.
+
+    .DESCRIPTION
+        See .SYNOPSIS
+
+    .NOTES
+
+    .PARAMETER AddChocolateyPackageProvider
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If it is used, the Chocolatey Package Provider will be added and trusted by default.
+
+    .PARAMETER InstallNuGetCmdLine
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If it is used, the Nuget.CmdLine package will be installed (i.e. nuget.exe).
+
+    .PARAMETER LoadUpdatedModulesInSameSession
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If used, if the PowerShellGet/PackageManagement Modules are updated,
+        the updated Modules will be reloaded in the same PowerShell Session. This will break several
+        cmdlets, so using this parameter not recommended unless you are certan that the cmdlets you are planning
+        on using will still work.
+
+    .EXAMPLE
+        # Open an elevated PowerShell Session, import the module, and -
+        
+        PS C:\Users\zeroadmin> Update-PackageManagement -AddChocolateyPackageProvider -InstallNuGetCmdLine
+
+#>
 function Update-PackageManagement {
     [CmdletBinding()]
     Param( 
@@ -492,8 +529,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUyRYJT6OxkG7GtdjnZUJpuIyq
-# s3agggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUTo6/RPYplsUMiCE2t7BNfC1r
+# 0PKgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -550,11 +587,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFCaz9zyL0yVuXLV0
-# ckMjUWWBeyTjMA0GCSqGSIb3DQEBAQUABIIBACPVuWJmVifZkvbJ/8drD8Md+fcX
-# fPn3P9JjdkEcO2pbBwChS4mX2uPSLA6AEulPdUN98i3uakO5siruu5Or/Eb1oRpc
-# YhXHQXN3SdG01iL+iN19VKpFkSbkzpRKpr4qn5DygUy2sJLHDGm26gnjlCTn3pZp
-# tbKAlEQ8+Exr3Y3/himkjcUbZ+RQFqBE5/H2MFUgdB8fpfAp+mI6rJq7bKYv2iMa
-# IsdGQcdE2R8aPbZ8CXfzauvOqElIqHCXdNL4/nKl9z2F0h7SX4IHFZm1UfdDZtNh
-# ldXBcmDlv6gnysLfdHZxYwMhcXLzyt5ki9QLt/CxYRCw4cBZDJYAkDDKP5I=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFBmK4aPzSgJ5ugTA
+# VIyF0LQS4NDsMA0GCSqGSIb3DQEBAQUABIIBAK12Pi8UVCGWRThd07ABFmZOvhS8
+# 7QPswykDjqOUrjy7TGCEjQW3Qpr5krYAUbmuRGRclAEDvw+cLlUB6A2GUHTqbb+x
+# CtRR1nQk2oK1WraTIi4Rr1ip6AkTj0x/51I2vpBJzvr8zUgYrsdVYhOQftLjbck/
+# nQcc5AXRuGIEOZ1/v/VH+7mg+UzSFfETZMDK1rf1b3IuQfMCGbfuVM8yt7+NHuyq
+# t+tMh1UIAdOW+1T4ILjC9v1LdA5uxXSgiyU1WmrQp63NvkoG6YWXqJaRkQ6f/VyZ
+# dzVC+j1/JndPkU7D3ff5jxbtN3PnF1qGspMTOzwt4kYUi69mxL2ueusbQOo=
 # SIG # End signature block

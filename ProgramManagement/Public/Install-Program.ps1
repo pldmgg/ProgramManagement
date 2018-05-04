@@ -18,6 +18,8 @@
         same name as the Program, the function may need additional information provided via the
         -CommandName and/or -ExpectedInstallLocation parameters in order to find the Main Executable.
 
+    .NOTES
+
     .PARAMETER ProgramName
         This parameter is MANDATORY.
 
@@ -89,21 +91,28 @@
 
         This parameter is a switch. This switch is meant to be used in situations where you are not certain what the
         name of the Main Executable of the program to be installed will be. This switch will provide an array of
-        .exe files associated with the program installation in the 'PossibleMainExecutables' property of the function's
+        exe files associated with the program installation in the 'PossibleMainExecutables' property of the function's
         output.
 
     .EXAMPLE
-        Install-Program -ProgramName kubernetes-cli -CommandName kubectl.exe
+        # Open an elevated PowerShell Session, import the module, and -
+
+        PS C:\Users\zeroadmin> Install-Program -ProgramName kubernetes-cli -CommandName kubectl.exe
 
     .EXAMPLE
-        Install-Program -ProgramName awscli -CommandName aws.exe -UsePowerShellGet
+        # Open an elevated PowerShell Session, import the module, and -
+
+        PS C:\Users\zeroadmin> Install-Program -ProgramName awscli -CommandName aws.exe -UsePowerShellGet
 
     .EXAMPLE
-        Install-Program -ProgramName VisualStudioCode -CommandName Code.exe -UseChocolateyCmdLine
+        # Open an elevated PowerShell Session, import the module, and -
+
+        PS C:\Users\zeroadmin> Install-Program -ProgramName VisualStudioCode -CommandName Code.exe -UseChocolateyCmdLine
 
     .EXAMPLE
-        # If the Program Name and Main Executable are the same, then this is all you need...
-        Install-Program -ProgramName vagrant
+        # If the Program Name and Main Executable are the same, then this is all you need for the function to find the Main Executable
+        
+        PS C:\Users\zeroadmin> Install-Program -ProgramName vagrant
 
 #>
 function Install-Program {
@@ -923,8 +932,8 @@ function Install-Program {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUPsI+GyVEd6A5myCXEdRAzKqm
-# x2Kgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQULxey+7z4JnwVQviHX0ATb3Z8
+# A4ugggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -981,11 +990,11 @@ function Install-Program {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFJKwLj4JoUBlqQ2J
-# TmVG9mq89AxjMA0GCSqGSIb3DQEBAQUABIIBABHSwBs+LnqgDiCuA2iZZF9yBLLR
-# KsyB8UeeFZQU51qJdfIp7BJ+261jCb+ntvZDwuwhvFVqVrPpTOs2xnihqFp5vlY/
-# l+5QPWiGmfbulKpfYEy4tRTcXIGwxv/Z2mZsyqtN4qrga3FpTnm5Gzc54P/fRe3/
-# 2ycgOiYIOq1lR0A3eU/g84WeRJVpDOvQtKldYfrFjm4cBmJ3YwL8QPT+YjaU05PK
-# Xv1y8s17hHSpEU///UViEc7wsrviLU4RJWT4hCaGveVy1Cpf39OBh9/jRDGohOH8
-# G/5Ro4NPdBY/e7EHq2+iXKPa2NLXBJeVsPBZ5Z1M7LbqLPuFh1Cui4wyFwo=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFEMth+lMeEy0arG/
+# jLzEO6SiphFSMA0GCSqGSIb3DQEBAQUABIIBAFeFTUOgSDFIjkuVpwdUyeqV72P7
+# WweOAycuARM301g6DNJOZYx9LFBRhJfrpxf7L8mPs6FuFnZu6+Z3yDdOtGsmvgxA
+# +wO5cmrtk68dhMZNDCz5aw39zpdn+mG8z7SqyyzAQy8J6TxfjDcPOtIxrB4UszJr
+# wN8wjdKS3Hb9VLCepYlPp8rIt8qVHYeXgnPyCzRuoMq9YDuMTRRBI3tSUNjwFCnb
+# BTCGRAZm5/9nPjf69qqPW1Qb78WysueMB0sFKk43nFRHEzXYL1aV+XI6DqqUnIeh
+# Z3Fr7adcOGDuxIURsrudSbJJOB7EUuBxNFlcQPi6MmqAitdxPR44Y0zjw5g=
 # SIG # End signature block

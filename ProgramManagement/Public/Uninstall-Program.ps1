@@ -1,27 +1,45 @@
 <#
     .SYNOPSIS
-        Installs the Chocolatey Command Line (i.e. choco.exe and related binaries)
+        Uninstalls the specified Program. The value provided to the -ProgramName parameter does NOT have
+        to be an exact match. If multiple matches are found, the function prompts for a specific selection
+        (one of which is 'all of the above').
 
     .DESCRIPTION
         See .SYNOPSIS
 
-    .PARAMETER NoUpdatePackageManagement
+    .NOTES
+
+    .PARAMETER ProgramName
+        This parameter is MANDATORY.
+
+        This parameter takes a string that represents the name of the program you would like to uninstall. The
+        value provided to this parameter does not have to be an exact match. If multiple matches are found the
+        function prompts for a specfic selection (one of which is 'all of the above').
+
+    .PARAMETER UninstallAllSimilarlyNamedPackages
         This parameter is OPTIONAL.
 
-        This parameter is a switch. Use it to update PowerShellGet/PackageManagement Modules prior to attempting
-        Chocolatey CmdLine install.
+        This parameter is a switch. If used, all programs that match the string provided to the -ProgramName
+        parameter will be uninstalled. The user will NOT receive a prompt for specific selection.
 
     .EXAMPLE
-        Install-ChocolateyCmdLine
+        # Open an elevated PowerShell Session, import the module, and -
+
+        PS C:\Users\zeroadmin> Uninstall-Program -ProgramName python
 
     .EXAMPLE
-        Install-ChocolateyCmdLine -UpdatePackageManagement
+        # Open an elevated PowerShell Session, import the module, and -
+        
+        PS C:\Users\zeroadmin> Uninstall-Program -ProgramName python -UninstallAllSimilarlyNamedPackages
 
 #>
 function Uninstall-Program {
     [CmdletBinding()]
     Param (
-        [Parameter(Mandatory=$True)]
+        [Parameter(
+            Mandatory=$True,
+            Position=0
+        )]
         [string]$ProgramName,
 
         [Parameter(Mandatory=$False)]
@@ -218,8 +236,8 @@ function Uninstall-Program {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU2jKdmhQnSe9thTZo8BLoKP5g
-# n3Ggggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUMysXIaBjCPbK8doaTxshK4OP
+# D4agggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -276,11 +294,11 @@ function Uninstall-Program {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFO7WtVdvmWXd25wj
-# lwIGSpKXRUGTMA0GCSqGSIb3DQEBAQUABIIBAKmQsbsZN0nHThNKsl92QYzfwyiE
-# Kv3xxiT6LffmWw16MQwsGpkQ/td1+XtnaiuM68IKqyPsWo4+fdSVZiYtoqYFXcc7
-# 0eQuvuq1td2aMFqS12ukYA0q2xjQOwpsHP3s0JD+egrOeo6zhb0D9HzMnXgov2Jd
-# bwjNCq4uc2vuJKIA1p8vN1sW0I3EZtyz+w6+R7ftqJz5CLtZHW7YUkVYqAMwUJ0R
-# Wj918UWl2HxoRAHiNPSDY1tgjWBa+maVgsRdPu66O9rf8EO7w8UWPrfLIzY9oafQ
-# gDfSjc1FdzyyulrQj1gAeD9QsgS/hdHSGLLSoS2z7p+MRCLrxW3crUdMSvs=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFO82+gKaFg/pPVv3
+# tmDBBCfvDi8ZMA0GCSqGSIb3DQEBAQUABIIBAHA53rNkJ3mU9fjA3Ab/HDi9Gymf
+# b5weQYsauiSUOOpIk1e8Ap4mlhoLbIS/D0OOcqpG175DASAPltsiG+bmaWOlDBwo
+# miSOVnWLQwMRigIw5XmolQbY4Nn+4W4l0OXUcVkL+s9HG2fis28X+34wz8Zd/mUq
+# ZmidDblfew19kiPRdwkCRNI39gq9nE2uqJ9rYTXWHkn8QlO0FwDfJtPp0xq63C23
+# DmLLpkrHfeiVxcvcQH7vAAh2cwrcGIZVb2GLFdkLVUsAlPAfVSpzStqwwLN/Q8O9
+# p3bQv5ZXt+5Z8RcjlLz796AX4PApjYXbduBE5jiyqS1mmobUNZiIh6DFH4c=
 # SIG # End signature block

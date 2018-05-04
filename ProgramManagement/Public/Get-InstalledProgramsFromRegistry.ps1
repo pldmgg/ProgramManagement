@@ -1,21 +1,44 @@
 <#
     .SYNOPSIS
-        This function gathers information about a particular installed program from the Windows Registry.
+        This function gathers information about programs installed on the specified Hosts by inspecting
+        the Windows Registry.
 
-        If you're looking for detailed information about a Program, or if you're looking to generate a list
-        that closely resembles what you see in the 'Control Panel' 'Programs and Features' GUI, use this function.
+        If you do NOT use the -ProgramTitleSearchTerm parameter, information about ALL programs installed on
+        the specified hosts will be returned.
 
     .DESCRIPTION
         See .SYNOPSIS
 
+    .NOTES
+
+        If you're looking for detailed information about an installed Program, or if you're looking to generate a list
+        that closely resembles what you see in the 'Control Panel' 'Programs and Features' GUI, use this function.
+
     .PARAMETER ProgramTitleSearchTerm
-        This parameter is MANDATORY.
+        This parameter is OPTIONAL.
 
         This parameter takes a string that loosely matches the Program Name that you would like
-        to gather information about. Do NOT use regex with this parameter.
+        to gather information about. You can use regex with with this parameter.
+
+        If you do NOT use this parameter, a list of ALL programs installed on the 
+
+    .PARAMETER HostName
+        This parameter is OPTIONAL, but is defacto mandatory since it defaults to $env:ComputerName.
+
+        This parameter takes an array of string representing DNS-Resolveable host names that this function will
+        attempt to gather Program Installation information from.
+
+    .PARAMETER AllADWindowsComputers
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If it is used, this function will use the 'Get-ADComputer' cmdlet from the ActiveDirectory
+        PowerShell Module (from RSAT) in order to generate a list of Computers on the domain. It will then get program information
+        from each of those computers.
 
     .EXAMPLE
-        Get-AllPackageInfo openssh
+        # Open an elevated PowerShell Session, import the module, and -
+
+        PS C:\Users\zeroadmin> Get-AllPackageInfo openssh
 #>
 function Get-InstalledProgramsFromRegistry {
     [CmdletBinding(
@@ -33,7 +56,7 @@ function Get-InstalledProgramsFromRegistry {
             Mandatory=$False,
             ParameterSetName='Default Param Set'
         )]
-        [string[]]$HostName = $env:COMPUTERNAME,
+        [string[]]$HostName,
 
         [Parameter(
             Mandatory=$False,
@@ -43,6 +66,10 @@ function Get-InstalledProgramsFromRegistry {
     )
 
     ##### BEGIN Variable/Parameter Transforms and PreRun Prep #####
+
+    if (!$HostName -and !$AllADWindowsComputers) {
+        [string[]]$HostName = @($env:ComputerName)
+    }
 
     $uninstallWow6432Path = "\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
     $uninstallPath = "\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
@@ -59,17 +86,38 @@ function Get-InstalledProgramsFromRegistry {
     ##### BEGIN Main Body #####
     # Get a list of Windows Computers from AD
     if ($AllADWindowsComputers) {
-        $ComputersArray = $(Get-ADComputer -Filter * -Property * | Where-Object {$_.OperatingSystem -like "*Windows*"}).Name
+        if (!$(Get-Module -ListAvailable ActiveDirectory)) {
+            Write-Error "The ActiveDirectory PowerShell Module (from RSAT) is not installed on this machine (i.e. $env:ComputerName)! Unable to get a list of Computers from Active Directory. Halting!"
+            $global:FunctionResult = "1"
+            return
+        }
+        if (!$(Get-Module ActiveDirectory)) {
+            try {
+                Import-Module ActiveDirectory -ErrorAction Stop
+            }
+            catch {
+                Write-Error $_
+                Write-Error "Problem importing the PowerShell Module 'ActiveDirectory'! Halting!"
+                $global:FunctionResult = "1"
+                return
+            }
+        }
+        if (!$(Get-Command Get-ADComputer)) {
+            Write-Error "Unable to find the cmdlet 'Get-ADComputer'! Unable to get a list of Computers from Active Directory. Halting!"
+            $global:FunctionResult = "1"
+            return
+        }
+        [array]$ComputersArray = $(Get-ADComputer -Filter * -Property * | Where-Object {$_.OperatingSystem -like "*Windows*"}).Name
     }
     else {
-        $ComputersArray = $env:COMPUTERNAME
+        [array]$ComputersArray = $HostName
     }
 
     foreach ($computer in $ComputersArray) {
-        if ($computer -eq $env:COMPUTERNAME -or $computer.Split("\.")[0] -eq $env:COMPUTERNAME) {
+        if ($computer -eq $env:ComputerName -or $computer.Split("\.")[0] -eq $env:ComputerName) {
             try {
                 $InstalledPrograms = foreach ($regpath in $RegPaths) {if (Test-Path $regpath) {Get-ItemProperty $regpath}}
-                if (!$?) {
+                if (!$InstalledPrograms) {
                     throw
                 }
             }
@@ -87,7 +135,7 @@ function Get-InstalledProgramsFromRegistry {
                         }
                     }
                 } -ErrorAction SilentlyContinue
-                if (!$?) {
+                if (!$InstalledPrograms) {
                     throw
                 }
             }
@@ -112,8 +160,8 @@ function Get-InstalledProgramsFromRegistry {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUwCOHxDNxcRzro2u97cNOsMPu
-# EYCgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUi/viuIG9SxdFmiuBE3Wbtbax
+# gLegggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -170,11 +218,11 @@ function Get-InstalledProgramsFromRegistry {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFPM7FLQzVU67QfgL
-# P+yQ0ppz3BVrMA0GCSqGSIb3DQEBAQUABIIBAFJiMYylGliSb9DDpudNmOzJxvMz
-# sIFIKsCVs+q7Ox1vzUfvwsq0WZWK+S8BZJ6i5VuJwONMo8dt+h9HXu1HR06crRRs
-# lb3XE2YI7W/+ifIAxFNyIpg9NSk48CyGY/3zW8T+zSf5vrFcW2mD771TLnS9vc57
-# 3y8HVTsYtBeleVdmHVrFFO96nE0Yd7DwMpl0SJjsCU1Z+gWuTSJnxB3nM1yVx3SF
-# F6DUl2W6MyzuIohJBy0BxNPvqEXfhkB/IidO10uagwFEM5rNQIEPuOv9DZtoJulQ
-# 7BQ93P97w3aXl0NkW6INeqz5wNQdzfDwMt9vVoXP0z3upyUnjrAsUKGdFM0=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFPjdKALKRAl/gJbF
+# u0fOxOrodcjOMA0GCSqGSIb3DQEBAQUABIIBABLofkZ/nxD2WMLiV7YkR2oJ4yYY
+# fvDUtqzTILCfSbauw3p/DR+DWNonGTn/jN785UvL07+RR2Ntd3SnO7/S9MHjrsF8
+# AjkmOSou1xblu7gEHqHGqemLfYQS1EUf8WBqxgk+ENVHZApYLXKuOnYw5qQtFPh8
+# wnr4VB4vXOWISVNWBH1qh9Zi31KNGPkoOfIDKPnOBTOVxFoSf7uHLU16W1ZtYFqX
+# goK1scaflZn1BIVSXDxI/u8LyzzPyTUhrPAHoHOqPXAfa47mSQxwbWjCru0Zar/x
+# DEw1SHaX0W/yvPBKcmJqkHKAmpZB9n3jfsJ/L3SPCvg1RIX/xNmMAvioz+8=
 # SIG # End signature block

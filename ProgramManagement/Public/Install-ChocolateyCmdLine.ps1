@@ -5,17 +5,23 @@
     .DESCRIPTION
         See .SYNOPSIS
 
-    .PARAMETER NoUpdatePackageManagement
+    .NOTES
+
+    .PARAMETER UpdatePackageManagement
         This parameter is OPTIONAL.
 
         This parameter is a switch. Use it to update PowerShellGet/PackageManagement Modules prior to attempting
         Chocolatey CmdLine install.
 
     .EXAMPLE
-        Install-ChocolateyCmdLine
+        # Open an elevated PowerShell Session, import the module, and -
+
+        PS C:\Users\zeroadmin> Install-ChocolateyCmdLine
 
     .EXAMPLE
-        Install-ChocolateyCmdLine -UpdatePackageManagement
+        # Open an elevated PowerShell Session, import the module, and -
+        
+        PS C:\Users\zeroadmin> Install-ChocolateyCmdLine -UpdatePackageManagement
 
 #>
 function Install-ChocolateyCmdLine {
@@ -279,8 +285,8 @@ function Install-ChocolateyCmdLine {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUfuwQMlwPYXtUv9EYH3BSyhlZ
-# sFigggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU0iJR9KE9RUaTRSnlCDXHbpYd
+# 1ragggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -337,11 +343,11 @@ function Install-ChocolateyCmdLine {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFIxcYM+HeOz5F4DH
-# K27Ha48lDm2RMA0GCSqGSIb3DQEBAQUABIIBACJrjqxMcgiRl6wCdiaXRCSf28Md
-# 2YQINBEAoIhd5n9LzDYTfIsg54hpHsACI21MeuCa6cf4x2Y/BfdbqjVTDVZbapFy
-# 7p9P5uQhhy/tBzwiAEKCrNRdAy9nO08IdZXCKuU5I+J8U0ezx5b/S+pmkJ+SaT8X
-# eHDVauy0MjXUx2EQz4k1XFiLYtuuTnaYyf0PC5qaE7uePdF2zFUdM2JkTTidTSsQ
-# L60xKpT6NC7kOxFl3/VT2pR+358Mk7+4OluGa5tUzYqohg60fP4dv3nr98vDlepN
-# UqfR+Ha44gewadCJTaExsdIRaSHzTA+d8A+VF7rBUoUbJ1r21oVQIR33BCY=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFDq1QHS7yHp4Ta0X
+# wcvp8D1pUUZBMA0GCSqGSIb3DQEBAQUABIIBALrdHYECT+VM7Ntk5Z4EQacgj/mc
+# zGKqABArsetU2BQpr6Y8xasttaK2QI9pBgmAy5QZyKooxaOaixaM46QwQQLVMQa3
+# Cru6p5TFTZX5Jg9fX41zk9w1Cc9K5ry+FINGCQ+zN3PbZP32fdtkP7AsY8I5IFbG
+# Ew5JNikt+NJQuJQ3QGlOd5cx8SuN8SX1hHHDcIpxQhcTi8X1+JYOLWgf9Gu7glEs
+# hbgEShxFQ3hPx0XPrBQtue1Zru8dIZprZf3BUHHJ/mkT1CUjhLxTlfsJxadMG+67
+# v3EGyJwqA/axcQX7oExyBugdagot3/a+YLfop56HLBk66+mgzpnQRlobzHY=
 # SIG # End signature block

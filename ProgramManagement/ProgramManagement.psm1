@@ -17,10 +17,39 @@ foreach ($import in $Private) {
 # Public Functions
 
 
+<#
+    .SYNOPSIS
+        This function gathers information about a particular installed program from 3 different sources:
+            - The Get-Package Cmdlet fromPowerShellGet/PackageManagement Modules
+            - Chocolatey CmdLine (if it is installed)
+            - Windows Registry
+
+        All of this information is needed in order to determine the proper way to install/uninstall a program.
+
+    .DESCRIPTION
+        See .SYNOPSIS
+
+    .NOTES
+
+    .PARAMETER ProgramName
+        This parameter is MANDATORY.
+
+        This parameter takes a string that represents the name of the Program that you would like to gatehr information about.
+        The name of the program does NOT have to be exact. For example, if you have 'python3' installed, you can simply use:
+            Get-AllPackageInfo python
+
+    .EXAMPLE
+        # Open an elevated PowerShell Session, import the module, and -
+        
+        PS C:\Users\zeroadmin> Get-AllPackageInfo openssh
+#>
 function Get-AllPackageInfo {
     [CmdletBinding()]
     Param (
-        [Parameter(Mandatory=$True)]
+        [Parameter(
+            Mandatory=$True,
+            Position=0
+        )]
         [string]$ProgramName
     )
 
@@ -129,6 +158,48 @@ function Get-AllPackageInfo {
 }
 
 
+<#
+    .SYNOPSIS
+        This function gathers information about programs installed on the specified Hosts by inspecting
+        the Windows Registry.
+
+        If you do NOT use the -ProgramTitleSearchTerm parameter, information about ALL programs installed on
+        the specified hosts will be returned.
+
+    .DESCRIPTION
+        See .SYNOPSIS
+
+    .NOTES
+
+        If you're looking for detailed information about an installed Program, or if you're looking to generate a list
+        that closely resembles what you see in the 'Control Panel' 'Programs and Features' GUI, use this function.
+
+    .PARAMETER ProgramTitleSearchTerm
+        This parameter is OPTIONAL.
+
+        This parameter takes a string that loosely matches the Program Name that you would like
+        to gather information about. You can use regex with with this parameter.
+
+        If you do NOT use this parameter, a list of ALL programs installed on the 
+
+    .PARAMETER HostName
+        This parameter is OPTIONAL, but is defacto mandatory since it defaults to $env:ComputerName.
+
+        This parameter takes an array of string representing DNS-Resolveable host names that this function will
+        attempt to gather Program Installation information from.
+
+    .PARAMETER AllADWindowsComputers
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If it is used, this function will use the 'Get-ADComputer' cmdlet from the ActiveDirectory
+        PowerShell Module (from RSAT) in order to generate a list of Computers on the domain. It will then get program information
+        from each of those computers.
+
+    .EXAMPLE
+        # Open an elevated PowerShell Session, import the module, and -
+
+        PS C:\Users\zeroadmin> Get-AllPackageInfo openssh
+#>
 function Get-InstalledProgramsFromRegistry {
     [CmdletBinding(
         PositionalBinding=$True,
@@ -145,17 +216,20 @@ function Get-InstalledProgramsFromRegistry {
             Mandatory=$False,
             ParameterSetName='Default Param Set'
         )]
-        [string[]]$HostName = $env:COMPUTERNAME,
+        [string[]]$HostName,
 
         [Parameter(
             Mandatory=$False,
             ParameterSetName='Secondary Param Set'
         )]
         [switch]$AllADWindowsComputers
-
     )
 
     ##### BEGIN Variable/Parameter Transforms and PreRun Prep #####
+
+    if (!$HostName -and !$AllADWindowsComputers) {
+        [string[]]$HostName = @($env:ComputerName)
+    }
 
     $uninstallWow6432Path = "\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
     $uninstallPath = "\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
@@ -172,17 +246,38 @@ function Get-InstalledProgramsFromRegistry {
     ##### BEGIN Main Body #####
     # Get a list of Windows Computers from AD
     if ($AllADWindowsComputers) {
-        $ComputersArray = $(Get-ADComputer -Filter * -Property * | Where-Object {$_.OperatingSystem -like "*Windows*"}).Name
+        if (!$(Get-Module -ListAvailable ActiveDirectory)) {
+            Write-Error "The ActiveDirectory PowerShell Module (from RSAT) is not installed on this machine (i.e. $env:ComputerName)! Unable to get a list of Computers from Active Directory. Halting!"
+            $global:FunctionResult = "1"
+            return
+        }
+        if (!$(Get-Module ActiveDirectory)) {
+            try {
+                Import-Module ActiveDirectory -ErrorAction Stop
+            }
+            catch {
+                Write-Error $_
+                Write-Error "Problem importing the PowerShell Module 'ActiveDirectory'! Halting!"
+                $global:FunctionResult = "1"
+                return
+            }
+        }
+        if (!$(Get-Command Get-ADComputer)) {
+            Write-Error "Unable to find the cmdlet 'Get-ADComputer'! Unable to get a list of Computers from Active Directory. Halting!"
+            $global:FunctionResult = "1"
+            return
+        }
+        [array]$ComputersArray = $(Get-ADComputer -Filter * -Property * | Where-Object {$_.OperatingSystem -like "*Windows*"}).Name
     }
     else {
-        $ComputersArray = $env:COMPUTERNAME
+        [array]$ComputersArray = $HostName
     }
 
     foreach ($computer in $ComputersArray) {
-        if ($computer -eq $env:COMPUTERNAME -or $computer.Split("\.")[0] -eq $env:COMPUTERNAME) {
+        if ($computer -eq $env:ComputerName -or $computer.Split("\.")[0] -eq $env:ComputerName) {
             try {
                 $InstalledPrograms = foreach ($regpath in $RegPaths) {if (Test-Path $regpath) {Get-ItemProperty $regpath}}
-                if (!$?) {
+                if (!$InstalledPrograms) {
                     throw
                 }
             }
@@ -200,7 +295,7 @@ function Get-InstalledProgramsFromRegistry {
                         }
                     }
                 } -ErrorAction SilentlyContinue
-                if (!$?) {
+                if (!$InstalledPrograms) {
                     throw
                 }
             }
@@ -223,11 +318,37 @@ function Get-InstalledProgramsFromRegistry {
 }
 
 
+<#
+    .SYNOPSIS
+        Installs the Chocolatey Command Line (i.e. choco.exe and related binaries)
+
+    .DESCRIPTION
+        See .SYNOPSIS
+
+    .NOTES
+
+    .PARAMETER UpdatePackageManagement
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. Use it to update PowerShellGet/PackageManagement Modules prior to attempting
+        Chocolatey CmdLine install.
+
+    .EXAMPLE
+        # Open an elevated PowerShell Session, import the module, and -
+
+        PS C:\Users\zeroadmin> Install-ChocolateyCmdLine
+
+    .EXAMPLE
+        # Open an elevated PowerShell Session, import the module, and -
+        
+        PS C:\Users\zeroadmin> Install-ChocolateyCmdLine -UpdatePackageManagement
+
+#>
 function Install-ChocolateyCmdLine {
     [CmdletBinding()]
     Param (
         [Parameter(Mandatory=$False)]
-        [switch]$NoUpdatePackageManagement
+        [switch]$UpdatePackageManagement
     )
 
     ##### BEGIN Variable/Parameter Transforms and PreRun Prep #####
@@ -244,7 +365,7 @@ function Install-ChocolateyCmdLine {
     $global:FunctionResult = "0"
     $MyFunctionsUrl = "https://raw.githubusercontent.com/pldmgg/misc-powershell/master/MyFunctions"
 
-    if (!$NoUpdatePackageManagement) {
+    if ($UpdatePackageManagement) {
         if (![bool]$(Get-Command Update-PackageManagement -ErrorAction SilentlyContinue)) {
             $UpdatePMFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Update-PackageManagement.ps1"
             try {
@@ -484,76 +605,119 @@ function Install-ChocolateyCmdLine {
 
 <#
     .SYNOPSIS
-        Install a Program using PackageManagement/PowerShellGet OR the Chocolatey Cmdline.
+        Install a Program using PowerShellGet/PackageManagement Modules OR the Chocolatey CmdLine.
 
     .DESCRIPTION
         This function was written to make program installation on Windows as easy and generic
         as possible by leveraging existing solutions such as PackageManagement/PowerShellGet
         and the Chocolatey CmdLine.
 
-        The function defaults to using PackageManagement/PowerShellGet. If that fails for
-        whatever reason, then the Chocolatey CmdLine is used. You can also use appropriate
-        parameters to specifically use EITHER PackageManagement/PowerShellGet OR the
-        Chocolatey CmdLine
+        Default behavior for this function (using only the -ProgramName parameter) is to try
+        installation via PackageManagement/PowerShellGet. If that fails for whatever reason, then
+        the Chocolatey CmdLine is used (it will be installed if it isn't already). You can use
+        more specific parameters to change this default behavior (i.e. ONLY try installation via
+        PowerShellGet/PackageManagement or ONLY try installation via Chocolatey CmdLine).
+
+        If you use the -ResolveCommandPath parameter, this function will attempt to find the Main
+        Executable associated with the Program you are installing. If the .exe does NOT have the
+        same name as the Program, the function may need additional information provided via the
+        -CommandName and/or -ExpectedInstallLocation parameters in order to find the Main Executable.
+
+    .NOTES
 
     .PARAMETER ProgramName
         This parameter is MANDATORY.
 
         This paramter takes a string that represents the name of the program that you'd like to install.
 
-    .PARAMETER UsePowerShellGet
-        This parameter is OPTIONAL.
-
-        This parameter is a switch that makes the function attempt program installation using ONLY
-        PackageManagement/PowerShellGet Modules. Install using those modules fails for whatever
-        reason, the function halts and returns the relevant error message(s).
-
-        Installation via the Chocolatey CmdLine will NOT be attempted.
-
-    .PARAMETER UseChocolateyCmdLine
-        This parameter is OPTIONAL.
-
-        This parameter is a switch that makes the function attemt program installation using ONLY
-        the Chocolatey CmdLine. If installation via the Chocolatey CmdLine fails for whatever reason,
-        the function halts and returns the relevant error message(s)
-
-    .PARAMETER ExpectedInstallLocation
-        This parameter is OPTIONAL.
-
-        This parameter takes a string that represents the full path to a directory that contains the
-        main executable for the installed program. This directory does NOT have to be the immediate
-        parent directory of the .exe.
-
-        If you are absolutely certain you know where on the filesystem the program will be installed,
-        then use this parameter to speed things up.
-
     .PARAMETER CommandName
         This parameter is OPTIONAL.
 
         This parameter takes a string that represents the name of the main executable for the installed
-        program. For example, if you are installing 7zip, the value of this parameter should be (under
-        most circumstances) '7z'.
+        program. For example, if you are installing 'openssh', the value of this parameter should be 'ssh'.
 
-    .PARAMETER NoUpdatePackageManagement
+    .PARAMETER PreRelease
         This parameter is OPTIONAL.
 
-        This parameter is a switch that suppresses this function's default behavior, which is to try
-        and update PackageManagement/PowerShellGet Modules before attempting to use them to install
-        the desired program. Updating these modules can take up to a minute, so use this switch
-        if you want to skip the attempt to update.
+        This parameter is a switch. If used, the latest version of the program in the pre-release branch
+        (if one exists) will be installed.
+
+    .PARAMETER UsePowerShellGet
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If used the function will attempt program installation using ONLY
+        PackageManagement/PowerShellGet Modules. If installation using those modules fails, the function
+        halts and returns the relevant error message(s).
+
+        Installation via the Chocolatey CmdLine will NOT be attempted.
+
+    .PARAMETER ForceChocoInstallScript
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If the program being installed is from the Chocolatey Package Repository,
+        using this parameter will force running the program's associated 'chocolateyinstall.ps1' script.
+        This switch exists because some Chocolatey packages do NOT run 'chocolateyinstall.ps1' by default,
+        meaning that 'Get-Package' could report that a program is 'Installed' when it actually is not.
+
+    .PARAMETER UseChocolateyCmdLine
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If used the function will attempt installation using ONLY
+        the Chocolatey CmdLine. (The Chocolatey CmdLine will be installed if it is not already).
+        If installation via the Chocolatey CmdLine fails for whatever reason,
+        the function halts and returns the relevant error message(s).
+
+    .PARAMETER UpdatePackageManagement
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If used, PowerShellGet/PackageManagement Modules will be updated before
+        any install actions take place.
+
+        WARNING: If the Modules are updated, you may need to open a new PowerShell Session before they can be used.
+
+    .PARAMETER ExpectedInstallLocation
+        This parameter is OPTIONAL.
+
+        This parameter takes a string that represents the full path to a directory that will contain
+        main executable associated with the program to be installed. This directory does NOT have to
+        be the immediate parent directory of the .exe.
+
+        If you are absolutely certain you know where the Main Executable for the program to be installed
+        will be, then use this parameter to speed things up.
+
+    .PARAMETER ScanCDriveForMainExeIfNecessary
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If used in conjunction with the -CommandName parameter, this function will
+        scan the entire C Drive until it finds a .exe that matches the values provided to the -CommandName parameter.
+
+    .PARAMETER ResolveCommandPath
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. This switch is meant to be used in situations where you are not certain what the
+        name of the Main Executable of the program to be installed will be. This switch will provide an array of
+        exe files associated with the program installation in the 'PossibleMainExecutables' property of the function's
+        output.
 
     .EXAMPLE
-        Install-Program -ProgramName kubernetes-cli -CommandName kubectl.exe
+        # Open an elevated PowerShell Session, import the module, and -
+
+        PS C:\Users\zeroadmin> Install-Program -ProgramName kubernetes-cli -CommandName kubectl.exe
 
     .EXAMPLE
-        Install-Program -ProgramName awscli -CommandName aws.exe -UsePowerShellGet
+        # Open an elevated PowerShell Session, import the module, and -
+
+        PS C:\Users\zeroadmin> Install-Program -ProgramName awscli -CommandName aws.exe -UsePowerShellGet
 
     .EXAMPLE
-        Install-Program -ProgramName VisualStudioCode -CommandName Code.exe -UseChocolateyCmdLine
+        # Open an elevated PowerShell Session, import the module, and -
+
+        PS C:\Users\zeroadmin> Install-Program -ProgramName VisualStudioCode -CommandName Code.exe -UseChocolateyCmdLine
 
     .EXAMPLE
-        # If the Program Name and Main Executable are the same, then this is all you need...
-        Install-Program -ProgramName vagrant
+        # If the Program Name and Main Executable are the same, then this is all you need for the function to find the Main Executable
+        
+        PS C:\Users\zeroadmin> Install-Program -ProgramName vagrant
 
 #>
 function Install-Program {
@@ -567,6 +731,9 @@ function Install-Program {
 
         [Parameter(Mandatory=$False)]
         [string]$CommandName,
+
+        [Parameter(Mandatory=$False)]
+        [switch]$PreRelease,
 
         [Parameter(
             Mandatory=$False,
@@ -584,19 +751,16 @@ function Install-Program {
         [switch]$UseChocolateyCmdLine,
 
         [Parameter(Mandatory=$False)]
-        [string]$ExpectedInstallLocation,
+        [switch]$UpdatePackageManagement,
 
         [Parameter(Mandatory=$False)]
-        [switch]$NoUpdatePackageManagement = $True,
+        [string]$ExpectedInstallLocation,
 
         [Parameter(Mandatory=$False)]
         [switch]$ScanCDriveForMainExeIfNecessary,
 
         [Parameter(Mandatory=$False)]
-        [switch]$ResolveCommandPath = $False,
-
-        [Parameter(Mandatory=$False)]
-        [switch]$PreRelease
+        [switch]$ResolveCommandPath
     )
 
     ##### BEGIN Native Helper Functions #####
@@ -736,10 +900,6 @@ function Install-Program {
         return
     }
 
-    if ($UseChocolateyCmdLine) {
-        $NoUpdatePackageManagement = $True
-    }
-
     Write-Host "Please wait..."
     $global:FunctionResult = "0"
     $MyFunctionsUrl = "https://raw.githubusercontent.com/pldmgg/misc-powershell/master/MyFunctions"
@@ -749,7 +909,7 @@ function Install-Program {
     $null = Install-PackageProvider -Name Chocolatey -Force -Confirm:$False
     $null = Set-PackageSource -Name chocolatey -Trusted -Force
 
-    if (!$NoUpdatePackageManagement) {
+    if ($UpdatePackageManagement) {
         if (![bool]$(Get-Command Update-PackageManagement -ErrorAction SilentlyContinue)) {
             $UpdatePMFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Update-PackageManagement.ps1"
             try {
@@ -985,7 +1145,7 @@ function Install-Program {
             if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
                 try {
                     $global:FunctionResult = "0"
-                    $null = Install-ChocolateyCmdLine -NoUpdatePackageManagement -ErrorAction SilentlyContinue -ErrorVariable ICCErr -WarningAction SilentlyContinue
+                    $null = Install-ChocolateyCmdLine -ErrorAction SilentlyContinue -ErrorVariable ICCErr -WarningAction SilentlyContinue
                     if ($ICCErr -and $global:FunctionResult -eq "1") {throw "The Install-ChocolateyCmdLine function failed! Halting!"}
                 }
                 catch {
@@ -1375,10 +1535,48 @@ function Install-Program {
 }
 
 
+<#
+    .SYNOPSIS
+        Uninstalls the specified Program. The value provided to the -ProgramName parameter does NOT have
+        to be an exact match. If multiple matches are found, the function prompts for a specific selection
+        (one of which is 'all of the above').
+
+    .DESCRIPTION
+        See .SYNOPSIS
+
+    .NOTES
+
+    .PARAMETER ProgramName
+        This parameter is MANDATORY.
+
+        This parameter takes a string that represents the name of the program you would like to uninstall. The
+        value provided to this parameter does not have to be an exact match. If multiple matches are found the
+        function prompts for a specfic selection (one of which is 'all of the above').
+
+    .PARAMETER UninstallAllSimilarlyNamedPackages
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If used, all programs that match the string provided to the -ProgramName
+        parameter will be uninstalled. The user will NOT receive a prompt for specific selection.
+
+    .EXAMPLE
+        # Open an elevated PowerShell Session, import the module, and -
+
+        PS C:\Users\zeroadmin> Uninstall-Program -ProgramName python
+
+    .EXAMPLE
+        # Open an elevated PowerShell Session, import the module, and -
+        
+        PS C:\Users\zeroadmin> Uninstall-Program -ProgramName python -UninstallAllSimilarlyNamedPackages
+
+#>
 function Uninstall-Program {
     [CmdletBinding()]
     Param (
-        [Parameter(Mandatory=$True)]
+        [Parameter(
+            Mandatory=$True,
+            Position=0
+        )]
         [string]$ProgramName,
 
         [Parameter(Mandatory=$False)]
@@ -1573,6 +1771,37 @@ function Uninstall-Program {
 }
 
 
+<#
+    .SYNOPSIS
+        This function updates $env:Path to include directories that contain programs installed via the Chocolatey
+        Package Repository / Chocolatey CmdLine. It also loads Chocolatey PowerShell Modules required for package
+        installation via a Chocolatey Package's 'chocoinstallscript.ps1'.
+
+        NOTE: This function will remove paths in $env:Path that do not exist on teh filesystem.
+
+    .DESCRIPTION
+        See .SYNOPSIS
+
+    .NOTES
+
+    .PARAMETER ChocolateyDirectory
+        This parameter is OPTIONAL.
+
+        This parameter takes a string that represents the path to the location of the Chocolatey directory on your filesystem.
+        Use this parameter ONLY IF Chocolatey packages are NOT located under "C:\Chocolatey" or "C:\ProgramData\chocolatey". 
+
+    .PARAMETER UninstallAllSimilarlyNamedPackages
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If used, all programs that match the string provided to the -ProgramName
+        parameter will be uninstalled. The user will NOT receive a prompt for specific selection.
+
+    .EXAMPLE
+        # Open an elevated PowerShell Session, import the module, and -
+        
+        PS C:\Users\zeroadmin> Update-ChocolateyEnv
+
+#>
 function Update-ChocolateyEnv {
     [CmdletBinding()]
     Param(
@@ -1679,6 +1908,43 @@ function Update-ChocolateyEnv {
 }
 
 
+<#
+    .SYNOPSIS
+        This function updates PowerShellGet and PackageManagement Powershell Modules to the latest available versions.
+
+        IMPORTANT NOTE: If the Modules are update, their respective cmdlets MIGHT be broken until you start a new
+        PowerShell Session, so it is recommended that you start a new PowerShell Session after the Modules are updated
+        just to be certain that the cmdlets work as intended.
+
+    .DESCRIPTION
+        See .SYNOPSIS
+
+    .NOTES
+
+    .PARAMETER AddChocolateyPackageProvider
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If it is used, the Chocolatey Package Provider will be added and trusted by default.
+
+    .PARAMETER InstallNuGetCmdLine
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If it is used, the Nuget.CmdLine package will be installed (i.e. nuget.exe).
+
+    .PARAMETER LoadUpdatedModulesInSameSession
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If used, if the PowerShellGet/PackageManagement Modules are updated,
+        the updated Modules will be reloaded in the same PowerShell Session. This will break several
+        cmdlets, so using this parameter not recommended unless you are certan that the cmdlets you are planning
+        on using will still work.
+
+    .EXAMPLE
+        # Open an elevated PowerShell Session, import the module, and -
+        
+        PS C:\Users\zeroadmin> Update-PackageManagement -AddChocolateyPackageProvider -InstallNuGetCmdLine
+
+#>
 function Update-PackageManagement {
     [CmdletBinding()]
     Param( 
@@ -2175,8 +2441,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUaQ5VQyTUk7Xu1NwZAgTvL5CP
-# Moygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU49NhkMnsmkaHi8W52Puann6W
+# zICgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -2233,11 +2499,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFLhBY25MKnV9WOyr
-# NG6rXMeW0lj7MA0GCSqGSIb3DQEBAQUABIIBAH3FRbqM5qQXOvz2YXsyGMPTwryg
-# eYugqr+xlU1vHyW3zEYoupBFJpK5XdI/SrK8h29AD1aNIuMGoWn4FSLzH79QTrMM
-# LkuuYNvKlq4E9KKyHbEH1nOPW9Ui/AQC0FBMJ9crT8lmIzyLy4tFU2vB2IH+a5CK
-# vfN3j4D0lmLtYdEJj1E+nwRE/ruURwK+F7C+LUp8+H0wEdqz42BTSOoIJrWCwpZW
-# Zpa0bDuT1GDmHdKe60xZxYoj54PE+8lbCmvtAnLUFOvHdMC/cjfzjUvSrFE/oVVU
-# 7O6Gv88NZoo68ZNdrvU9wWf+61tfkkRxJefqaMrw0AqgM8i0+9BzD0Ilpho=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFDDDYF8/eALdgjmD
+# 04JHF5U9CELwMA0GCSqGSIb3DQEBAQUABIIBAATTUoO8TYTbBKpWqtnnJzEPzQnY
+# 3D01duRVu+q4dICA/U+v6MtKQm/K+xtDkF+tWDPO/VMdpFYRTBygR1/OQz3md8LQ
+# 4ZnTkji5IdH7H/IYXNgqxv3OM4B+TPcYwgEAvSmA1i7lcQzfFI5K/dzuyriXPLu2
+# HzmsiFdX2Xq8AK0dpGwexRKlYTcv9mXIeHHk2bY8BdXuxkshNGsvOBoFSKsGapVM
+# tMnUMFMKYpX6ieacalfDdvYfuFWVEwZct+DqH92uMxRQRdmswipgVOGlaBzICoFW
+# NaGBoe+TZJSNDjBGgwfRFeZmepZ63UJBzdtLnOln0gD87EhPLBQ/VXKGF3I=
 # SIG # End signature block

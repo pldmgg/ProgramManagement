@@ -1,3 +1,34 @@
+<#
+    .SYNOPSIS
+        This function updates $env:Path to include directories that contain programs installed via the Chocolatey
+        Package Repository / Chocolatey CmdLine. It also loads Chocolatey PowerShell Modules required for package
+        installation via a Chocolatey Package's 'chocoinstallscript.ps1'.
+
+        NOTE: This function will remove paths in $env:Path that do not exist on teh filesystem.
+
+    .DESCRIPTION
+        See .SYNOPSIS
+
+    .NOTES
+
+    .PARAMETER ChocolateyDirectory
+        This parameter is OPTIONAL.
+
+        This parameter takes a string that represents the path to the location of the Chocolatey directory on your filesystem.
+        Use this parameter ONLY IF Chocolatey packages are NOT located under "C:\Chocolatey" or "C:\ProgramData\chocolatey". 
+
+    .PARAMETER UninstallAllSimilarlyNamedPackages
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If used, all programs that match the string provided to the -ProgramName
+        parameter will be uninstalled. The user will NOT receive a prompt for specific selection.
+
+    .EXAMPLE
+        # Open an elevated PowerShell Session, import the module, and -
+        
+        PS C:\Users\zeroadmin> Update-ChocolateyEnv
+
+#>
 function Update-ChocolateyEnv {
     [CmdletBinding()]
     Param(
@@ -106,8 +137,8 @@ function Update-ChocolateyEnv {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU6eU6fIZ4e7vXemrQAOW4uuhP
-# 0ZOgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU05SwMnGBzxBy5ge67SPA1ocv
+# KQigggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -164,11 +195,11 @@ function Update-ChocolateyEnv {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFPvOtknMpJJCMv18
-# 4RwGt9dB5DA+MA0GCSqGSIb3DQEBAQUABIIBABxfhw11X7HsnvCKhZUG1POAoO7Y
-# r1qbFJFBrLteqZSNBEXpeWKDUYO5h2EKSqHCq189xbUKtMoDmyyjiS7pUK2K06tE
-# BZVZqd1opXfhoxAgl3sZppA42kdsdi+A27QAfIeDdS7setGXOtDoAx/pl0ZgBydx
-# OOakRh+qe0mLqBO6CEY8xMxVPugp7+FyUR1oGPEP4uh3hlDKZQ3cD13oenSXzU0U
-# VX0S1pqKoPJPvMDwU901+brq+henXxXwns9fISGh3mwrq7kZfUH7REdg89wyj+t3
-# suMFHJ12QoTbQVpK2kTBpg6Smpku4JFxqiwumBTXog9tWjpDythX9Ka2Er8=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFHPX4lL9yzwv534T
+# L3K56k6cnkOWMA0GCSqGSIb3DQEBAQUABIIBAG1yCsfcyeCaFBR1MwzBT8/fHJes
+# H7CrACoeU2akeq52BCmLWYlWMsPGtkXV1TCwUZqv9AWfZmbsEgw4dnq6tlNQY1oU
+# h44ZaInQlUJQ++HnjO+XgK8WnWO3uL9qfFE47aL0um6hPONtO8Kg0aq8ZiN9zRHJ
+# 2koN9d7CLHDkscbBv50lHR8E2W7ysuuf3mVHzW3PoQo9Q/Wkj8il5o7prGNCMJq5
+# rsiHy6vJ3TfYJlo8EqjmkvJCWqD0f314EypE8f8vZU2f2Bm2n+hRl+un2y2x0Bu4
+# DGt9OD7Vi6yhZQDpeimBcmbA/rvEAJudqzFo4jtWFLa8npx704mfsiM43ns=
 # SIG # End signature block
