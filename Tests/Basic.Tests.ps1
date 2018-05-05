@@ -71,15 +71,19 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
 
     It "Module '$env:BHProjectName' Private Functions Are Available in Internal Scope" {
         $Module = Get-Module $env:BHProjectName
+        [bool]$Module.Invoke({Get-Item function:AddLastWriteTimeToRegKeys}) | Should Be $True
+        [bool]$Module.Invoke({Get-Item function:GetMSIFileInfo}) | Should Be $True
         [bool]$Module.Invoke({Get-Item function:GetElevation}) | Should Be $True
+        [bool]$Module.Invoke({Get-Item function:GetNativePath}) | Should Be $True
+        [bool]$Module.Invoke({Get-Item function:PauseForWarning}) | Should Be $True
     }
 }
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU0/CqR0w4y6n1/O8YfiQqzr43
-# zZagggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU0Se3sHaqJd+SEozf0BL/+NCT
+# u2+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -136,11 +140,11 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFCIpAWcNBFBnw7Vy
-# 4WgbUqQqeHQiMA0GCSqGSIb3DQEBAQUABIIBALj96Iuy/Rt9nBfYsHiRnyyoWCCl
-# qbTbSQQiu6Vp1TSl5bvvxnblGpCF65OQivP3eSGwj33A+hzRPzrbMd/eoMOIC6vk
-# E3FgrIme9ngdJaWJYGADrjXglDLLo99lIAWjPa7bh/PZLLPkExbqqcUBlN7YnL4x
-# hOI9Yr89VMG/0kU+jNZ8Z9nxKIuxYXWgZtGoV+VC/34LJ94OTiFPJWAWTe8p4NXC
-# MkhfISp4jfKI5ofkmX/i7hbmfYU18q8JXiq7cOj7G8XEr7ahg7ary8K2RGS1XrDL
-# PruZhKkU6htt1nSTyPYynHHcCkA4xd9UXSwmBQ2r8ZkBAiufSOuKoK/SEcY=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFMDoXydTCOnnNWNO
+# ITDKb+vS/HHNMA0GCSqGSIb3DQEBAQUABIIBAAaftQxkUNA8CXt6fJMd9KEO10Vk
+# OvEMmpm1K3uVYQzgDWKHBbvzzJpyBnvIhuEv/lZVXDgOjSHvdBS5iFoJeUpSh4WI
+# 5+s/Jqa3td1bINNi08JlyfRdkaLU/HNjYPxYsm166lFk911sCgA9YD3VI7bNc71D
+# z/AJ74bMt/iF+ynE2TiYVKgIFftmpdluVO3tsEjBYfStH31+t8lYnsWjmS+gPjmt
+# 6L3+b/o809VIDoOkBfXvf4pVjJ82I+1tmoJeXCE4jqgS6lOkH3tWVgXAECb5Son6
+# KshlKgQUsH9+ER2YFv5v+jEZzdbIRHOotHOAA3eJxlABPWWAiUkeGH9i4ps=
 # SIG # End signature block
