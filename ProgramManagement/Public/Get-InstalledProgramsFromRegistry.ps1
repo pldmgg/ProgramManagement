@@ -38,7 +38,7 @@
     .EXAMPLE
         # Open an elevated PowerShell Session, import the module, and -
 
-        PS C:\Users\zeroadmin> Get-AllPackageInfo openssh
+        PS C:\Users\zeroadmin> Get-InstalledProgramsFromRegistry -ProgramTitleSearchTerm openssh
 #>
 function Get-InstalledProgramsFromRegistry {
     [CmdletBinding(
