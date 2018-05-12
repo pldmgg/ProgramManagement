@@ -295,7 +295,7 @@ function Uninstall-Program {
     }
 
     [pscustomobject]@{
-        DirectoriesThatMightNeedToBeRemoved = $DirectoriesThatMightNeedToBeRemoved
+        DirectoriesThatMightNeedToBeRemoved = [array]$DirectoriesThatMightNeedToBeRemoved
         ChocolateyInstalledProgramObjects   = [array]$ChocolateyInstalledProgramObjects
         PSGetInstalledPackageObjects        = [array]$PSGetInstalledPackageObjects
         RegistryProperties                  = [array]$RegistryProperties

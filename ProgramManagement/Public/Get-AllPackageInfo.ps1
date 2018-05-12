@@ -15,7 +15,7 @@
     .PARAMETER ProgramName
         This parameter is MANDATORY.
 
-        This parameter takes a string that represents the name of the Program that you would like to gatehr information about.
+        This parameter takes a string that represents the name of the Program that you would like to gather information about.
         The name of the program does NOT have to be exact. For example, if you have 'python3' installed, you can simply use:
             Get-AllPackageInfo python
 
