@@ -15,6 +15,61 @@ foreach ($import in $Private) {
 }
 
 # Public Functions
+if (!$(Get-Module -ListAvailable PSDepend)) {
+    try {
+        [string]$Path = $(Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules')
+        $ExistingProgressPreference = "$ProgressPreference"
+        $ProgressPreference = 'SilentlyContinue'
+        try {
+            # Bootstrap nuget if we don't have it
+            if(!$(Get-Command 'nuget.exe' -ErrorAction SilentlyContinue)) {
+                $NugetPath = Join-Path $ENV:USERPROFILE nuget.exe
+                if(-not (Test-Path $NugetPath)) {
+                    Invoke-WebRequest -uri 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' -OutFile $NugetPath
+                }
+            }
+            else {
+                $NugetPath = $(Get-Command 'nuget.exe').Path
+            }
+        
+            # Bootstrap PSDepend, re-use nuget.exe for the module
+            if($path) { $null = mkdir $path -Force }
+            $NugetParams = 'install', 'PSDepend', '-Source', 'https://www.powershellgallery.com/api/v2/',
+                        '-ExcludeVersion', '-NonInteractive', '-OutputDirectory', $Path
+            & $NugetPath @NugetParams
+            if (!$(Test-Path "$(Join-Path $Path PSDepend)\nuget.exe")) {
+                Move-Item -Path $NugetPath -Destination "$(Join-Path $Path PSDepend)\nuget.exe" -Force
+            }
+        }
+        finally {
+            $ProgressPreference = $ExistingProgressPreference
+        }
+    }
+    catch {
+
+        Remove-Module ProgramManagement -ErrorAction SilentlyContinue
+        Write-Error $_
+        Write-Error "Installing the PSDepend Module failed! The ProgramManagement Module will not be loaded. Halting!"
+
+        $global:FunctionResult = "1"
+        return
+    }
+}
+
+try {
+    Import-Module PSDepend
+    $null = Invoke-PSDepend -Path "$PSScriptRoot\module.requirements.psd1" -Install -Import -Force
+}
+catch {
+
+    Remove-Module ProgramManagement -ErrorAction SilentlyContinue
+    Write-Error $_
+    Write-Error "Problem with PSDepend Installing/Importing Module Dependencies! The ProgramManagement Module will not be loaded. Halting!"
+
+    $global:FunctionResult = "1"
+    return
+}
+
 
 
 <#
@@ -34,7 +89,7 @@ foreach ($import in $Private) {
     .PARAMETER ProgramName
         This parameter is MANDATORY.
 
-        This parameter takes a string that represents the name of the Program that you would like to gatehr information about.
+        This parameter takes a string that represents the name of the Program that you would like to gather information about.
         The name of the program does NOT have to be exact. For example, if you have 'python3' installed, you can simply use:
             Get-AllPackageInfo python
 
@@ -642,6 +697,12 @@ function Install-ChocolateyCmdLine {
         This parameter is a switch. If used, the latest version of the program in the pre-release branch
         (if one exists) will be installed.
 
+    .PARAMETER GetPreviousVersion
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If used, the version preceding the latest version of the program will
+        be installed.
+
     .PARAMETER UsePowerShellGet
         This parameter is OPTIONAL.
 
@@ -734,6 +795,9 @@ function Install-Program {
 
         [Parameter(Mandatory=$False)]
         [switch]$PreRelease,
+
+        [Parameter(Mandatory=$False)]
+        [switch]$GetPreviousVersion,
 
         [Parameter(
             Mandatory=$False,
@@ -979,10 +1043,24 @@ function Install-Program {
         return
     }
 
+    $AllPackageManagementVersions = Find-Package -Name $ProgramName -Source chocolatey -AllVersions -EA SilentlyContinue
+    if ([bool]$AllPackageManagementVersions) {
+        $PackageManagementLatestVersion = $($AllPackageManagementVersions | Sort-Object -Property Version -EA SilentlyContinue)[-1]
+        $PackageManagementPreviousVersion = $($AllPackageManagementVersions | Sort-Object -Property Version -EA SilentlyContinue)[-2]
+    }
+    if ([bool]$(Get-Command choco -EA SilentlyContinue)) {
+        $AllChocoVersions = choco list $ProgramName -e --all
+        if ([bool]$AllChocoVersions) {
+            $ChocoLatestVersion = $($AllChocoVersions[1] -split "[\s]")[1].Trim()
+            $ChocoPreviousVersion = $($AllChocoVersions[2] -split "[\s]")[1].Trim()
+        }
+    }
+
     if ($PSGetInstalledPackageObjects.Count -gt 0) {
         if ($PSGetInstalledPackageObjects.Count -eq 1) {
             $PackageManagementCurrentInstalledPackage = $PSGetInstalledPackageObjects
             $PackageManagementLatestVersion = $(Find-Package -Name $PSGetInstalledPackageObjects.Name -Source chocolatey -AllVersions | Sort-Object -Property Version)[-1]
+            $PackageManagementPreviousVersion = $(Find-Package -Name $PSGetInstalledPackageObjects.Name -Source chocolatey -AllVersions | Sort-Object -Property Version)[-2]
         }
         if ($PSGetInstalledPackageObjects.Count -gt 1) {
             $ExactMatchCheck = $PSGetInstalledPackageObjects | Where-Object {$_.Name -eq $ProgramName}
@@ -1048,6 +1126,15 @@ function Install-Program {
 
             $null = $ChocolateyOutdatedProgramsPSObjects.Add($PSObject)
         }
+
+        # Get all available Chocolatey Versions
+        $AllChocoVersions = choco list $ProgramName -e --all
+
+        # Get the latest version of $ProgramName from chocolatey
+        $ChocoLatestVersion = $($AllChocoVersions[1] -split "[\s]")[1].Trim()
+
+        # Also get the previous version of $ProgramName in case we want the previous version
+        $ChocoPreviousVersion = $($AllChocoVersions[2] -split "[\s]")[1].Trim()
     }
 
     if ($CommandName -match "\.exe") {
@@ -1066,11 +1153,29 @@ function Install-Program {
 
     ##### BEGIN Main Body #####
 
+    $CheckLatestVersion = $(
+        $PackageManagementCurrentInstalledPackage.Version -ne $PackageManagementLatestVersion.Version -or
+        $ChocolateyOutdatedProgramsPSObjects.ProgramName -contains $ProgramName
+    )
+    $CheckPreviousVersion = $(
+        $PackageManagementCurrentInstalledPackage.Version -ne $PackageManagementPreviousVersion.Version -or
+        $ChocoPreviousVersion -ne $ChocolateyInstalledProgramObjects.Version
+    )
+    if (!$GetPreviousVersion) {
+        $VersionCheck = $CheckPreviousVersion
+        $PackageManagementRequiredVersion = $PackageManagementLatestVersion.Version
+        $ChocoRequiredVersion = $ChocoLatestVersion
+    }
+    else {
+        $VersionCheck = $CheckLatestVersion
+        $PackageManagementRequiredVersion = $PackageManagementPreviousVersion.Version
+        $ChocoRequiredVersion = $ChocoPreviousVersion
+    }
+
     # Install $ProgramName if it's not already or if it's outdated...
-    if ($($PackageManagementInstalledPrograms.Name -notcontains $ProgramName  -and
+    if ($($PackageManagementInstalledPrograms.Name -notcontains $ProgramName -and
     $ChocolateyInstalledProgramsPSObjects.ProgramName -notcontains $ProgramName) -or
-    $PackageManagementCurrentInstalledPackage.Version -ne $PackageManagementLatestVersion.Version -or
-    $ChocolateyOutdatedProgramsPSObjects.ProgramName -contains $ProgramName
+    $VersionCheck
     ) {
         if ($UsePowerShellGet -or $(!$UsePowerShellGet -and !$UseChocolateyCmdLine) -or 
         $PackageManagementInstalledPrograms.Name -contains $ProgramName -and $ChocolateyInstalledProgramsPSObjects.ProgramName -notcontains $ProgramName
@@ -1081,6 +1186,9 @@ function Install-Program {
                 ErrorAction     = "SilentlyContinue"
                 ErrorVariable   = "InstallError"
                 WarningAction   = "SilentlyContinue"
+            }
+            if ([bool]$PackageManagementRequiredVersion) {
+                $InstallPackageSplatParams.Add("RequiredVersion",$PackageManagementRequiredVersion)
             }
             if ($PreRelease) {
                 $LatestVersion = $(Find-Package $ProgramName -AllVersions)[-1].Version
@@ -1163,6 +1271,9 @@ function Install-Program {
                 # control for them...
                 if ($PreRelease) {
                     $Arguments = "$ProgramName --pre -y"
+                }
+                elseif ([bool]$ChocoRequiredVersion) {
+                    $Arguments = "$ProgramName -y --version $ChocoRequiredVersion"
                 }
                 else {
                     $Arguments = "$ProgramName -y"
@@ -1832,7 +1943,7 @@ function Uninstall-Program {
     }
 
     [pscustomobject]@{
-        DirectoriesThatMightNeedToBeRemoved = $DirectoriesThatMightNeedToBeRemoved
+        DirectoriesThatMightNeedToBeRemoved = [array]$DirectoriesThatMightNeedToBeRemoved
         ChocolateyInstalledProgramObjects   = [array]$ChocolateyInstalledProgramObjects
         PSGetInstalledPackageObjects        = [array]$PSGetInstalledPackageObjects
         RegistryProperties                  = [array]$RegistryProperties
@@ -2512,8 +2623,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUeMjQGR5FpD5ZOwfK+LH8Rh5Y
-# e/ygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUDzWdixWUGYGg7yLHtH82RJLF
+# z2mgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -2570,11 +2681,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFD9HFCsd8JUScJ+W
-# qZa8QSCqmCZ1MA0GCSqGSIb3DQEBAQUABIIBAL6oT7FnrWw3ccwhVQVKvlN8bicl
-# 7yUqSOBpRuuoYHvDUgd7UOpLECEWzz8UVLrXRrlnLWYormCZiqwQTQT48qvTRyJB
-# 5KnXZvLkKsCCk+RDyxlJVuAfWzmCeTuTP35MRXtVe/tT8FlokZ5cJ4CQ1TLPnvR/
-# 3IJ32Kcu9Ui2rJP2AnC0ULhCddNSHH0VfEbyMl0/AN81OIt6fnfOxerXLGuLAnqT
-# WVruTC64ZLYJhiLcdXFT06e6iIavGUPANHpfTl9u6xLdZQHbNe4lU1dCWhKVkxS0
-# p2wEQG1if5GnvcqnFqEKZuSbHjKKr5bvWL79AAAnVScVZTZe4sZ5pX+8bjQ=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFJ9qxAYF8lNizYOG
+# 8wy7WIv94XDTMA0GCSqGSIb3DQEBAQUABIIBALsZCKN/u14Rb7VaYu/TZeMv5E7m
+# BAeRnc8e2jDyrVU45OxYn1sKpdZU4LkyxkLJY7hmffhuItQkRcmt5kMoes/Qxcqg
+# QLJt5B7Ht0k4BMcsTGGGWe5eYTwBCBJX92utTh9JvAHtSSeTkEbiEJZ/GJ2LP5XW
+# VF1mFX3vZ37rqijKw7gPgPV+DUuID7cVSbRSro6JpsJHF6ohoL/SSiQMym1Qqlqj
+# mIjadzdZmktBDiuVQYDS2agutvU3cFSG5SBGYaZYofls/43p+/5P/+NFbzxbzDPP
+# m9u8LLh/YQAU+Qb7bQP5gzPbQoaz2QB2CWZydcFUG9abp7DVi5xkmHSeVrE=
 # SIG # End signature block

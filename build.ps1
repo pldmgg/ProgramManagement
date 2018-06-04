@@ -152,6 +152,7 @@ try {
     # The specific error this fixes is a problem with the Publish-Module cmdlet from PowerShellGet. PSDeploy
     # calls Publish-Module without the -Force parameter which results in this error: https://github.com/PowerShell/PowerShellGet/issues/79
     # This is more a problem with PowerShellGet than PSDeploy.
+    <#
     Remove-Module PSDeploy
     $PSDeployScriptToEdit = Get-Childitem -Path $(Get-Module -ListAvailable PSDeploy).ModuleBase -File -Recurse -Filter "PSGalleryModule.ps1"
     [System.Collections.ArrayList][array]$PSDeployScriptContent = Get-Content $PSDeployScriptToEdit.FullName
@@ -159,6 +160,7 @@ try {
     $IndexOfLineOfInterest = $PSDeployScriptContent.IndexOf($LineOfInterest)
     $PSDeployScriptContent.Insert($($IndexOfLineOfInterest+1),"            Force      = `$True")
     Set-Content -Path $PSDeployScriptToEdit.FullName -Value $PSDeployScriptContent
+    #>
     Import-Module PSDeploy
 }
 catch {
@@ -290,8 +292,8 @@ exit ( [int]( -not $psake.build_success ) )
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUEoJNa1J7XA2AKo51gpFeTNy6
-# wl+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUa10M3+/QvSVMbDg4DHlbwbcJ
+# hm6gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -348,11 +350,11 @@ exit ( [int]( -not $psake.build_success ) )
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFMltfUZDFPTg1yy7
-# tGueQ3ZZvM/2MA0GCSqGSIb3DQEBAQUABIIBACofTwyPoR5ZV8GpsjJikhtVMFxn
-# hLu50THoAzOzFwVZcCP2+mKIesKC1kIYZ8mdGCj+Cv0YJxdDw+dQIdLO0weFpdh7
-# fxtjPUJPDfZPaEi9V6Zad4s9dL3LZT47jgUkz/9nBK0TVIMR6L+Te4Ak3f60M2de
-# ozWi4Ze75DtqQLGgqa/hRvxuzQWvPm33sTiQvZE4lqVbrTkRM6wq7sAYvOv6DF0b
-# wt/14MKj9Jxi8icAsoriUm5cqXSpmxp9CLOv1B9Nwyi+58qICSDWGOfp1mw91YA3
-# NNuSBpUvUgyM1HxOTSgyFvEY/RSS5I7TwUdGvcao/VcgPWxwL/nDVOUsyvQ=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFG3LqSpMzcHtDfRX
+# PsIWrKHgqVOcMA0GCSqGSIb3DQEBAQUABIIBAEYDzaxgNycovDvwrE2jnDbVOUSQ
+# KI+enDfH8ZQQ2nrtg1xTft3TVoLWSEFDuCyV4XJcVcf6iTzL7zJfKezbi2ZCZzti
+# C0Smceaq1d+0FpkYxPn/i5awdUh4hcUM+wzlWAIAobaJFFt99Qp3Pybh0ExgSETT
+# smODs4smbj2BJ1dLZZJRzIIPQ3Ckd13smElwW9JNNIizyjzLdtTDJaRQDTiavCTt
+# vywpkNOyUt6rPZJPbE1t553CiXSFdReZuKww8sei+7JhHdJF72RkNQHt0Fukhaxl
+# jQPRn/gOofYbpILfRotHl8HEFMmSsYdHnBGgHufDFn0tDlvJpEQ/YlEyNp0=
 # SIG # End signature block

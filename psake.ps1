@@ -83,6 +83,75 @@ foreach ($import in $Private) {
 # Public Functions
 '@ | Set-Content -Path "$env:BHModulePath\$env:BHProjectName.psm1"
 
+    # Optionally Install-PSDepend and install any dependency Modules
+    $PSDependOperations = @'
+if (!$(Get-Module -ListAvailable PSDepend)) {
+    try {
+        [string]$Path = $(Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules')
+        $ExistingProgressPreference = "$ProgressPreference"
+        $ProgressPreference = 'SilentlyContinue'
+        try {
+            # Bootstrap nuget if we don't have it
+            if(!$(Get-Command 'nuget.exe' -ErrorAction SilentlyContinue)) {
+                $NugetPath = Join-Path $ENV:USERPROFILE nuget.exe
+                if(-not (Test-Path $NugetPath)) {
+                    Invoke-WebRequest -uri 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' -OutFile $NugetPath
+                }
+            }
+            else {
+                $NugetPath = $(Get-Command 'nuget.exe').Path
+            }
+        
+            # Bootstrap PSDepend, re-use nuget.exe for the module
+            if($path) { $null = mkdir $path -Force }
+            $NugetParams = 'install', 'PSDepend', '-Source', 'https://www.powershellgallery.com/api/v2/',
+                        '-ExcludeVersion', '-NonInteractive', '-OutputDirectory', $Path
+            & $NugetPath @NugetParams
+            if (!$(Test-Path "$(Join-Path $Path PSDepend)\nuget.exe")) {
+                Move-Item -Path $NugetPath -Destination "$(Join-Path $Path PSDepend)\nuget.exe" -Force
+            }
+        }
+        finally {
+            $ProgressPreference = $ExistingProgressPreference
+        }
+    }
+    catch {
+
+'@ + @"
+
+        Remove-Module $env:BHProjectName -ErrorAction SilentlyContinue
+        Write-Error `$_
+        Write-Error "Installing the PSDepend Module failed! The $env:BHProjectName Module will not be loaded. Halting!"
+
+"@ + @'
+
+        $global:FunctionResult = "1"
+        return
+    }
+}
+
+try {
+    Import-Module PSDepend
+    $null = Invoke-PSDepend -Path "$PSScriptRoot\module.requirements.psd1" -Install -Import -Force
+}
+catch {
+
+'@ + @"
+
+    Remove-Module $env:BHProjectName -ErrorAction SilentlyContinue
+    Write-Error `$_
+    Write-Error "Problem with PSDepend Installing/Importing Module Dependencies! The $env:BHProjectName Module will not be loaded. Halting!"
+
+"@ + @'
+
+    $global:FunctionResult = "1"
+    return
+}
+
+'@
+
+    Add-Content -Path "$env:BHModulePath\$env:BHProjectName.psm1" -Value $PSDependOperations
+
     [System.Collections.ArrayList]$FunctionTextToAdd = @()
     foreach ($ScriptFileItem in $PublicScriptFiles) {
         $FileContent = Get-Content $ScriptFileItem.FullName
@@ -185,8 +254,8 @@ Task Deploy -Depends Build {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUTTjn5g3npPFhls6EZxuiLkTs
-# ZA2gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUpp0BZZ3JqTLc2iW+K39/iiHt
+# 64Cgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -243,11 +312,11 @@ Task Deploy -Depends Build {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFFGDOtcCVMD8IzNe
-# xHssSgsAey0sMA0GCSqGSIb3DQEBAQUABIIBAGHf7/mAByl36TFHzZa8kJ15ZrgG
-# iv33wI8YvCya4WGbYgnontqwLJlpfywQ2gsDkqvQ6wHZOOchKHHs8LZmhTaPdUzV
-# fyLBdgkCAF9r1/JP7kg0PgZD4i2NEUHGYcecr1beYknRMDx06LTcQjJizRXG+v2v
-# 9sqxVJu9Hq6j0oyhIVBP8CM3gaxnrh6jwgpfzdv2FkLwrjmvRan5Gyp8eryoLYkP
-# y1N0XNM77wBdmpPuTzmyVdUv9pY3RvM3uhPi3b0SWx1ruGkA2+NghpBv//GnPABS
-# ik6EJ2fJezGN+IvamcZI4R6phem/q7xTodcCGEvM8d67CrPqBfniKCA16ds=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFKFENkisrUXTC1uc
+# Jq6a71/EW9MYMA0GCSqGSIb3DQEBAQUABIIBAHldOcUvWw1o1grb3TERXGQcuH66
+# 8+Dd9o11sKydqFHju3nA5jDOSo0g3Rgr37dMqsBMqelvo9vpafiNxnYqzT/Nhyj9
+# /unT5wUsdYPnV4/dYnWgqVTJgvC8yxQNJNqb9k4LY3oXaGimseVkrsZHIxYy92au
+# hS1PyCUdzXIM+yvuNcWyIhTSft5vsaIyKji/Zw9hoAzNEGfC6MIu0PjBxIAUZAxC
+# 8r4RNIVoxL7IeGtaik9atls2XXQG7u/rS5cbjXjA6Lg4veQd2x9SFgzwjYeSCJmt
+# ZvhIJb1U0X8x/RtYrmHwhqhW1D4qziqqrRyDQNuIEvVOJDjPhxD8PXyUJZo=
 # SIG # End signature block
