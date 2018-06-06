@@ -3,6 +3,7 @@
 # Get public and private function definition files.
 [array]$Public  = Get-ChildItem -Path "$PSScriptRoot\Public\*.ps1" -ErrorAction SilentlyContinue
 [array]$Private = Get-ChildItem -Path "$PSScriptRoot\Private\*.ps1" -ErrorAction SilentlyContinue
+$ThisModule = $(Get-Item $PSCommandPath).BaseName
 
 # Dot source the Private functions
 foreach ($import in $Private) {
@@ -14,61 +15,64 @@ foreach ($import in $Private) {
     }
 }
 
-# Public Functions
-if (!$(Get-Module -ListAvailable PSDepend)) {
-    try {
-        [string]$Path = $(Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules')
-        $ExistingProgressPreference = "$ProgressPreference"
-        $ProgressPreference = 'SilentlyContinue'
+# Install-PSDepend if necessary so that we can install any dependency Modules
+if ($(Test-Path "$PSScriptRoot\module.requirements.psd1")) {
+    if (![bool]$(Get-Module -ListAvailable PSDepend -ErrorAction SilentlyContinue)) {
         try {
+            [string]$UserModulePath = Join-Path $([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules'
+            $ExistingProgressPreference = "$ProgressPreference"
+            $ProgressPreference = 'SilentlyContinue'
             # Bootstrap nuget if we don't have it
-            if(!$(Get-Command 'nuget.exe' -ErrorAction SilentlyContinue)) {
-                $NugetPath = Join-Path $ENV:USERPROFILE nuget.exe
-                if(-not (Test-Path $NugetPath)) {
-                    Invoke-WebRequest -uri 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' -OutFile $NugetPath
-                }
+            if ([bool]$(Get-ChildItem 'nuget.exe' -ErrorAction SilentlyContinue)) {
+                $NugetPath = $(Get-ChildItem nuget.exe).FullName
             }
             else {
-                $NugetPath = $(Get-Command 'nuget.exe').Path
+                $NugetPath = $(Get-Command 'nuget.exe' -ErrorAction SilentlyContinue).Path
             }
-        
+            
+            if (![bool]$NugetPath) {
+                $NugetPath = Join-Path $env:USERPROFILE nuget.exe
+                if (![bool]$(Test-Path $NugetPath)) {
+                    Invoke-WebRequest -Uri 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' -UseBasicParsing -OutFile $NugetPath
+                }
+            }
+    
             # Bootstrap PSDepend, re-use nuget.exe for the module
-            if($path) { $null = mkdir $path -Force }
+            if (!$(Test-Path $UserModulePath)) { $null = New-Item -ItemType Directory $UserModulePath -Force }
             $NugetParams = 'install', 'PSDepend', '-Source', 'https://www.powershellgallery.com/api/v2/',
-                        '-ExcludeVersion', '-NonInteractive', '-OutputDirectory', $Path
+                        '-ExcludeVersion', '-NonInteractive', '-OutputDirectory', $UserModulePath
             & $NugetPath @NugetParams
-            if (!$(Test-Path "$(Join-Path $Path PSDepend)\nuget.exe")) {
-                Move-Item -Path $NugetPath -Destination "$(Join-Path $Path PSDepend)\nuget.exe" -Force
+            if (!$(Test-Path "$(Join-Path $UserModulePath PSDepend)\nuget.exe")) {
+                Move-Item -Path $NugetPath -Destination "$(Join-Path $UserModulePath PSDepend)\nuget.exe" -Force
             }
-        }
-        finally {
             $ProgressPreference = $ExistingProgressPreference
         }
+        catch {
+            Write-Error $_
+            Write-Error "Installing the PSDepend Module failed! The $ThisModule Module will not be loaded. Halting!"
+            $ProgressPreference = $ExistingProgressPreference
+            Write-Warning "Please unload the $ThisModule Module via:`nRemove-Module $ThisModule"
+            $global:FunctionResult = "1"
+            return
+        }
     }
-    catch {
-
-        Remove-Module ProgramManagement -ErrorAction SilentlyContinue
-        Write-Error $_
-        Write-Error "Installing the PSDepend Module failed! The ProgramManagement Module will not be loaded. Halting!"
-
-        $global:FunctionResult = "1"
-        return
+    
+    if (![bool]$(Get-Module PSDepend -ErrorAction SilentlyContinue)) {
+        try {
+            Import-Module PSDepend
+            $null = Invoke-PSDepend -Path "$PSScriptRoot\module.requirements.psd1" -Install -Import -Force
+        }
+        catch {
+            Write-Error $_
+            Write-Error "Problem with PSDepend Installing/Importing Module Dependencies! The $ThisModule Module will not be loaded. Halting!"
+            Write-Warning "Please unload the $ThisModule Module via:`nRemove-Module $ThisModule"
+            $global:FunctionResult = "1"
+            return
+        }
     }
 }
 
-try {
-    Import-Module PSDepend
-    $null = Invoke-PSDepend -Path "$PSScriptRoot\module.requirements.psd1" -Install -Import -Force
-}
-catch {
-
-    Remove-Module ProgramManagement -ErrorAction SilentlyContinue
-    Write-Error $_
-    Write-Error "Problem with PSDepend Installing/Importing Module Dependencies! The ProgramManagement Module will not be loaded. Halting!"
-
-    $global:FunctionResult = "1"
-    return
-}
+# Public Functions
 
 
 
@@ -2623,8 +2627,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUDzWdixWUGYGg7yLHtH82RJLF
-# z2mgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU7vxY6EQNRO2ZksvaqyVZK1DQ
+# /mGgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -2681,11 +2685,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFJ9qxAYF8lNizYOG
-# 8wy7WIv94XDTMA0GCSqGSIb3DQEBAQUABIIBALsZCKN/u14Rb7VaYu/TZeMv5E7m
-# BAeRnc8e2jDyrVU45OxYn1sKpdZU4LkyxkLJY7hmffhuItQkRcmt5kMoes/Qxcqg
-# QLJt5B7Ht0k4BMcsTGGGWe5eYTwBCBJX92utTh9JvAHtSSeTkEbiEJZ/GJ2LP5XW
-# VF1mFX3vZ37rqijKw7gPgPV+DUuID7cVSbRSro6JpsJHF6ohoL/SSiQMym1Qqlqj
-# mIjadzdZmktBDiuVQYDS2agutvU3cFSG5SBGYaZYofls/43p+/5P/+NFbzxbzDPP
-# m9u8LLh/YQAU+Qb7bQP5gzPbQoaz2QB2CWZydcFUG9abp7DVi5xkmHSeVrE=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFGiy6z7DyS+l82f3
+# 8Zxq6cDIppEvMA0GCSqGSIb3DQEBAQUABIIBALNcoN+99CZjseQ4UJpiGKPCIIgj
+# aoxVqzcwDp1UobG7Htcz/AnMiZe8IVQ8yK1mzaYpITQX9DDlpc0r2VwuYqXZH1Eh
+# gPg1DUKYg2QMt4jWoPAfAUUlNHm35FQlB4CG30Ri9Zq/iPKos7DyXwokF95DqiiH
+# J7vd6gl3uWQNbf6kGZb0veNeXc8f5ob1ZyXjR0vTAtRHgs1L3ZF4mRtOFi4LDYWs
+# mxET6L19T2rE1LW/euR/85JcYd1xm8Jglvb2q0j5wv96wZiHhZsxaaHUFk/1R6X1
+# cuvsoTJBWpNQQqSkCEiHdbgOEwcw8DtYDhMq4WoAJc7He9R4FWzA9OupH60=
 # SIG # End signature block

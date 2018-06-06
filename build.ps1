@@ -193,7 +193,7 @@ foreach ($FileItem in $FilesToAnalyze) {
     $contents = Get-Content -Path $FileItem.FullName -ErrorAction Stop
     $errors = $null
     $null = [System.Management.Automation.PSParser]::Tokenize($contents, [ref]$errors)
-    if ($errors.Count -gt 0) {
+    if ($errors.Count -gt 0 -and $FileItem.Name -ne "$env:BHProjectName.psm1") {
         $null = $InvalidPowerShell.Add($FileItem)
     }
 }
@@ -292,8 +292,8 @@ exit ( [int]( -not $psake.build_success ) )
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUa10M3+/QvSVMbDg4DHlbwbcJ
-# hm6gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUvDTUVlN9t5ThW0hrtOKTUR4i
+# uqqgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -350,11 +350,11 @@ exit ( [int]( -not $psake.build_success ) )
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFG3LqSpMzcHtDfRX
-# PsIWrKHgqVOcMA0GCSqGSIb3DQEBAQUABIIBAEYDzaxgNycovDvwrE2jnDbVOUSQ
-# KI+enDfH8ZQQ2nrtg1xTft3TVoLWSEFDuCyV4XJcVcf6iTzL7zJfKezbi2ZCZzti
-# C0Smceaq1d+0FpkYxPn/i5awdUh4hcUM+wzlWAIAobaJFFt99Qp3Pybh0ExgSETT
-# smODs4smbj2BJ1dLZZJRzIIPQ3Ckd13smElwW9JNNIizyjzLdtTDJaRQDTiavCTt
-# vywpkNOyUt6rPZJPbE1t553CiXSFdReZuKww8sei+7JhHdJF72RkNQHt0Fukhaxl
-# jQPRn/gOofYbpILfRotHl8HEFMmSsYdHnBGgHufDFn0tDlvJpEQ/YlEyNp0=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFJPrOMLff8eRJzda
+# T+iu0u1U3YuWMA0GCSqGSIb3DQEBAQUABIIBAD3KFtAhETVOvGoAs2DpR2cV+CBL
+# Z4HzSxlmA7f8wxsbTKWPaaoSrpnvivB4aUMn12JwqHgMV/g4PxYuPocl+GEi3uDG
+# K9lHIFNCEylBc9DnsEqVi9gndSQUmrmFUhrNKnQOMfo3TP9bRgE8rwVCZbkMAI0r
+# wxUGIAa6Wkl9mIVycB03iOIZ/T4mkazrcKW2F9RMoOTTH0D6WdHPPXaYhJ78xgTj
+# P7hLbKGVTxNqpGsiqJTLJt9yyG8pR7aTSmkJFrWltu1XbMGIOg8wt0wePbgC5tr+
+# LhAjPn0aB8CvIhIENsvk1vpPlmqMeK7rFXxrnnddgoK6fYrTwMe3SqI6JOw=
 # SIG # End signature block

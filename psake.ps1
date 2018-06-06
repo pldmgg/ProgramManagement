@@ -63,12 +63,13 @@ Task Init -RequiredVariables  {
 }
 
 Task Compile -Depends Init {
-    $BoilerPlatePrivateFunctionSourcing = @'
+    $BoilerPlateFunctionSourcing = @'
 [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls"
 
 # Get public and private function definition files.
 [array]$Public  = Get-ChildItem -Path "$PSScriptRoot\Public\*.ps1" -ErrorAction SilentlyContinue
 [array]$Private = Get-ChildItem -Path "$PSScriptRoot\Private\*.ps1" -ErrorAction SilentlyContinue
+$ThisModule = $(Get-Item $PSCommandPath).BaseName
 
 # Dot source the Private functions
 foreach ($import in $Private) {
@@ -80,77 +81,67 @@ foreach ($import in $Private) {
     }
 }
 
-# Public Functions
-'@ | Set-Content -Path "$env:BHModulePath\$env:BHProjectName.psm1"
-
-    # Optionally Install-PSDepend and install any dependency Modules
-    $PSDependOperations = @'
-if (!$(Get-Module -ListAvailable PSDepend)) {
-    try {
-        [string]$Path = $(Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules')
-        $ExistingProgressPreference = "$ProgressPreference"
-        $ProgressPreference = 'SilentlyContinue'
+# Install-PSDepend if necessary so that we can install any dependency Modules
+if ($(Test-Path "$PSScriptRoot\module.requirements.psd1")) {
+    if (![bool]$(Get-Module -ListAvailable PSDepend -ErrorAction SilentlyContinue)) {
         try {
+            [string]$UserModulePath = Join-Path $([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules'
+            $ExistingProgressPreference = "$ProgressPreference"
+            $ProgressPreference = 'SilentlyContinue'
             # Bootstrap nuget if we don't have it
-            if(!$(Get-Command 'nuget.exe' -ErrorAction SilentlyContinue)) {
-                $NugetPath = Join-Path $ENV:USERPROFILE nuget.exe
-                if(-not (Test-Path $NugetPath)) {
-                    Invoke-WebRequest -uri 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' -OutFile $NugetPath
-                }
+            if ([bool]$(Get-ChildItem 'nuget.exe' -ErrorAction SilentlyContinue)) {
+                $NugetPath = $(Get-ChildItem nuget.exe).FullName
             }
             else {
-                $NugetPath = $(Get-Command 'nuget.exe').Path
+                $NugetPath = $(Get-Command 'nuget.exe' -ErrorAction SilentlyContinue).Path
             }
-        
+            
+            if (![bool]$NugetPath) {
+                $NugetPath = Join-Path $env:USERPROFILE nuget.exe
+                if (![bool]$(Test-Path $NugetPath)) {
+                    Invoke-WebRequest -Uri 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' -UseBasicParsing -OutFile $NugetPath
+                }
+            }
+    
             # Bootstrap PSDepend, re-use nuget.exe for the module
-            if($path) { $null = mkdir $path -Force }
+            if (!$(Test-Path $UserModulePath)) { $null = New-Item -ItemType Directory $UserModulePath -Force }
             $NugetParams = 'install', 'PSDepend', '-Source', 'https://www.powershellgallery.com/api/v2/',
-                        '-ExcludeVersion', '-NonInteractive', '-OutputDirectory', $Path
+                        '-ExcludeVersion', '-NonInteractive', '-OutputDirectory', $UserModulePath
             & $NugetPath @NugetParams
-            if (!$(Test-Path "$(Join-Path $Path PSDepend)\nuget.exe")) {
-                Move-Item -Path $NugetPath -Destination "$(Join-Path $Path PSDepend)\nuget.exe" -Force
+            if (!$(Test-Path "$(Join-Path $UserModulePath PSDepend)\nuget.exe")) {
+                Move-Item -Path $NugetPath -Destination "$(Join-Path $UserModulePath PSDepend)\nuget.exe" -Force
             }
-        }
-        finally {
             $ProgressPreference = $ExistingProgressPreference
         }
+        catch {
+            Write-Error $_
+            Write-Error "Installing the PSDepend Module failed! The $ThisModule Module will not be loaded. Halting!"
+            $ProgressPreference = $ExistingProgressPreference
+            Write-Warning "Please unload the $ThisModule Module via:`nRemove-Module $ThisModule"
+            $global:FunctionResult = "1"
+            return
+        }
     }
-    catch {
-
-'@ + @"
-
-        Remove-Module $env:BHProjectName -ErrorAction SilentlyContinue
-        Write-Error `$_
-        Write-Error "Installing the PSDepend Module failed! The $env:BHProjectName Module will not be loaded. Halting!"
-
-"@ + @'
-
-        $global:FunctionResult = "1"
-        return
+    
+    if (![bool]$(Get-Module PSDepend -ErrorAction SilentlyContinue)) {
+        try {
+            Import-Module PSDepend
+            $null = Invoke-PSDepend -Path "$PSScriptRoot\module.requirements.psd1" -Install -Import -Force
+        }
+        catch {
+            Write-Error $_
+            Write-Error "Problem with PSDepend Installing/Importing Module Dependencies! The $ThisModule Module will not be loaded. Halting!"
+            Write-Warning "Please unload the $ThisModule Module via:`nRemove-Module $ThisModule"
+            $global:FunctionResult = "1"
+            return
+        }
     }
 }
 
-try {
-    Import-Module PSDepend
-    $null = Invoke-PSDepend -Path "$PSScriptRoot\module.requirements.psd1" -Install -Import -Force
-}
-catch {
-
-'@ + @"
-
-    Remove-Module $env:BHProjectName -ErrorAction SilentlyContinue
-    Write-Error `$_
-    Write-Error "Problem with PSDepend Installing/Importing Module Dependencies! The $env:BHProjectName Module will not be loaded. Halting!"
-
-"@ + @'
-
-    $global:FunctionResult = "1"
-    return
-}
+# Public Functions
 
 '@
-
-    Add-Content -Path "$env:BHModulePath\$env:BHProjectName.psm1" -Value $PSDependOperations
+    Set-Content -Path "$env:BHModulePath\$env:BHProjectName.psm1" -Value $BoilerPlateFunctionSourcing
 
     [System.Collections.ArrayList]$FunctionTextToAdd = @()
     foreach ($ScriptFileItem in $PublicScriptFiles) {
@@ -254,8 +245,8 @@ Task Deploy -Depends Build {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUpp0BZZ3JqTLc2iW+K39/iiHt
-# 64Cgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUw0UP/eUHFyOqI6gNQR1FfnKp
+# YCagggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -312,11 +303,11 @@ Task Deploy -Depends Build {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFKFENkisrUXTC1uc
-# Jq6a71/EW9MYMA0GCSqGSIb3DQEBAQUABIIBAHldOcUvWw1o1grb3TERXGQcuH66
-# 8+Dd9o11sKydqFHju3nA5jDOSo0g3Rgr37dMqsBMqelvo9vpafiNxnYqzT/Nhyj9
-# /unT5wUsdYPnV4/dYnWgqVTJgvC8yxQNJNqb9k4LY3oXaGimseVkrsZHIxYy92au
-# hS1PyCUdzXIM+yvuNcWyIhTSft5vsaIyKji/Zw9hoAzNEGfC6MIu0PjBxIAUZAxC
-# 8r4RNIVoxL7IeGtaik9atls2XXQG7u/rS5cbjXjA6Lg4veQd2x9SFgzwjYeSCJmt
-# ZvhIJb1U0X8x/RtYrmHwhqhW1D4qziqqrRyDQNuIEvVOJDjPhxD8PXyUJZo=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFKhYQUy58SW073C4
+# vidj4jqiFM2jMA0GCSqGSIb3DQEBAQUABIIBACGNDxy4NK29I+W4N6LKwh4k55Va
+# 5EKQIBkr6Oc4M3X2Qc+ZYOMp+LxSYw3vhaYVHJdXwlumlxGZvfPmha+W8Ax1AtzL
+# JiR4QL/EE5VuQWPgi94bI9gYuOCFaaZUxpbE/p1ZeS7RPu9p4dCTV26k1TPawXO0
+# kA0x+6X6TMNsTOGSoEVkHprU2QYN1n7clQy6ykAPCZV0P2ne90XmCWQahRiBKKlN
+# f0fKTUfp7AeXsSDidKsHINu2SsGGhY4qdDbtWUx/XQRbmWEkHsW2kknQvagI+fM3
+# 5raadQVkt4L5oR3ImOI8+lsRAZqa6JyQecJnxJGDleh2NXcbOrNLhUqBqko=
 # SIG # End signature block
