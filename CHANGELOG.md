@@ -1,5 +1,9 @@
 # Change log
 
+## 0.8.5 (June 13, 2018)
+
+- Now compatible with PowerShell Core ON WINDOWS
+
 ## 0.8.4 (June 06, 2018)
 
 - Updated build process and Pester testing
