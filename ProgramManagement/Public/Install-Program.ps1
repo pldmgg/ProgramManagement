@@ -308,10 +308,15 @@ function Install-Program {
     $global:FunctionResult = "0"
     $MyFunctionsUrl = "https://raw.githubusercontent.com/pldmgg/misc-powershell/master/MyFunctions"
 
-    $null = Install-PackageProvider -Name Nuget -Force -Confirm:$False
-    $null = Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-    $null = Install-PackageProvider -Name Chocolatey -Force -Confirm:$False
-    $null = Set-PackageSource -Name chocolatey -Trusted -Force
+    if ($PSVersionTable.PSEdition -ne "Core") {
+        $null = Install-PackageProvider -Name Nuget -Force -Confirm:$False
+        $null = Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+        $null = Install-PackageProvider -Name Chocolatey -Force -Confirm:$False
+        $null = Set-PackageSource -Name chocolatey -Trusted -Force
+    }
+    else {
+        $null = Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+    }
 
     if ($UpdatePackageManagement) {
         if (![bool]$(Get-Command Update-PackageManagement -ErrorAction SilentlyContinue)) {
@@ -988,8 +993,8 @@ function Install-Program {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU0iIYuBh/t+Jz114mfRTgWsFL
-# 3Mygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUmHf+SzKH5gK6v7teOOAfxJET
+# vPmgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -1046,11 +1051,11 @@ function Install-Program {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFMkeZRH3P1Zse5dr
-# 5hgmuKB/23YSMA0GCSqGSIb3DQEBAQUABIIBABxom1aMpq4BRi+/F4RpTx78LMdi
-# jRG3itjFOeveIYcluSyBm927rjTGaGaZR0IOFPvtGUO90GBqMsQKVyvPWPxOXFBr
-# t6D2qA9lJrWD7wRne+ZyZAHaVrIXmu+nLbq8Hg3uDOg1DlpJ9kNQSBF6rVZnUcjk
-# 6OnDI0ar6D/NeczdHwpEoqecmpbIUdF7ePi8g5vohlOrWnjDExzDORWY7zZExZ3N
-# vhNJEnOiRPP5JmHkjtY7PEB3P4sCrlRV+NJGN26TGX5gwza8LrsUTiW+tP1h7cU9
-# NSSalh96/0SfJCzkOwjqcSFEnD55NkpegoX7XR6QZyY/aHTn5Vh6glhmRIs=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFPjtOQp9eoMTAp+4
+# wSZV/CFm+UjhMA0GCSqGSIb3DQEBAQUABIIBAKkbo4rvsN7jWtUX3dDjmF6QR7zL
+# bFKxh5VXaq20M7MR4uFJzPZtmScDp2M92fnUZ8xniYOhkHe2frteQQUVjDW2/a3N
+# pIcCiIFTDkLMhpyCbaNpyUUhbdEymoEQyid3+/aN0zB9MwlJGkddvYlsJESZ06LX
+# Z84pOTBTbcziFORdUJNUXySnqmXu9WL32Uon+HXnKAAHiCYEwasCaZozvDCg24EQ
+# xzrqNFkROWL05mS70wplGQ5gKddvpOXRN8n7FJ5m+wRvAOozO/jtAZRiRxGhB3VM
+# YPj9m0nAw8+0QFpt2DQWvmOdZMYx987hZlnFZOITjMjQvte7MiaSM6hr3TE=
 # SIG # End signature block

@@ -19,7 +19,13 @@ foreach ($import in $Private) {
 if ($(Test-Path "$PSScriptRoot\module.requirements.psd1")) {
     if (![bool]$(Get-Module -ListAvailable PSDepend -ErrorAction SilentlyContinue)) {
         try {
-            [string]$UserModulePath = Join-Path $([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules'
+            if ($PSVersionTable.PSEdition -eq "Desktop") {
+                [string]$UserModulePath = Join-Path $([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules'
+            }
+            else {
+                [string]$UserModulePath = Join-Path $([Environment]::GetFolderPath('MyDocuments')) 'PowerShell\Modules'
+            }
+            
             $ExistingProgressPreference = "$ProgressPreference"
             $ProgressPreference = 'SilentlyContinue'
             # Bootstrap nuget if we don't have it
@@ -60,15 +66,48 @@ if ($(Test-Path "$PSScriptRoot\module.requirements.psd1")) {
     if (![bool]$(Get-Module PSDepend -ErrorAction SilentlyContinue)) {
         try {
             Import-Module PSDepend
-            $null = Invoke-PSDepend -Path "$PSScriptRoot\module.requirements.psd1" -Install -Import -Force
         }
         catch {
             Write-Error $_
-            Write-Error "Problem with PSDepend Installing/Importing Module Dependencies! The $ThisModule Module will not be loaded. Halting!"
             Write-Warning "Please unload the $ThisModule Module via:`nRemove-Module $ThisModule"
             $global:FunctionResult = "1"
             return
         }
+    }
+
+    # Before we Invoke-PSDepend on module.requirements.psd1, make sure that the Target directory
+    # for Modules fits with the version of PowerShell that we're using
+    if ($PSVersionTable.PSEdition -eq "Core") {
+        # Make sure the PowerShell Core User Scope Module Directory exists. If not, create it.
+        if (!$(Test-Path "$HOME\Documents\PowerShell\Modules")) {
+            $null = New-Item -ItemType Directory -Path "$HOME\Documents\PowerShell\Modules" -Force
+        }
+        $ModReqsContent = Get-Content "$PSScriptRoot\module.requirements.psd1"
+        $ModReqsLineToReplace = $($ModReqsContent | Select-String -Pattern "[\s]+Target[\s]=[\s]").Line
+        $UpdatedModReqsContent = $ModReqsContent -replace [regex]::Escape($ModReqsLineToReplace),"        Target = '$ENV:USERPROFILE\Documents\PowerShell\Modules'"
+        Set-Content -Path "$PSScriptRoot\module.requirements.psd1" -Value $UpdatedModReqsContent 
+    }
+    if ($PSVersionTable.PSEdition -ne "Core") {
+        # Make sure the PowerShell Core User Scope Module Directory exists. If not, create it.
+        if (!$(Test-Path "$HOME\Documents\WindowsPowerShell\Modules")) {
+            $null = New-Item -ItemType Directory -Path "$HOME\Documents\WindowsPowerShell\Modules" -Force
+        }
+        $ModReqsContent = Get-Content "$PSScriptRoot\module.requirements.psd1"
+        $ModReqsLineToReplace = $($ModReqsContent | Select-String -Pattern "[\s]+Target[\s]=[\s]").Line
+        $UpdatedModReqsContent = $ModReqsContent -replace [regex]::Escape($ModReqsLineToReplace),"        Target = '$ENV:USERPROFILE\Documents\WindowsPowerShell\Modules'"
+        Set-Content -Path "$PSScriptRoot\module.requirements.psd1" -Value $UpdatedModReqsContent 
+    }
+
+    # Install Dependencies if they're not already
+    try {
+        $null = Invoke-PSDepend -Path "$PSScriptRoot\module.requirements.psd1" -Install -Import -Force
+    }
+    catch {
+        Write-Error $_
+        Write-Error "Problem with the PSDepend Module Installing/Importing Module Dependencies! The $ThisModule Module will not be loaded. Halting!"
+        Write-Warning "Please unload the $ThisModule Module via:`nRemove-Module $ThisModule"
+        $global:FunctionResult = "1"
+        return
     }
 }
 
@@ -972,10 +1011,15 @@ function Install-Program {
     $global:FunctionResult = "0"
     $MyFunctionsUrl = "https://raw.githubusercontent.com/pldmgg/misc-powershell/master/MyFunctions"
 
-    $null = Install-PackageProvider -Name Nuget -Force -Confirm:$False
-    $null = Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-    $null = Install-PackageProvider -Name Chocolatey -Force -Confirm:$False
-    $null = Set-PackageSource -Name chocolatey -Trusted -Force
+    if ($PSVersionTable.PSEdition -ne "Core") {
+        $null = Install-PackageProvider -Name Nuget -Force -Confirm:$False
+        $null = Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+        $null = Install-PackageProvider -Name Chocolatey -Force -Confirm:$False
+        $null = Set-PackageSource -Name chocolatey -Trusted -Force
+    }
+    else {
+        $null = Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+    }
 
     if ($UpdatePackageManagement) {
         if (![bool]$(Get-Command Update-PackageManagement -ErrorAction SilentlyContinue)) {
@@ -2627,8 +2671,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU7vxY6EQNRO2ZksvaqyVZK1DQ
-# /mGgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU/LoNxUhSb+lsC6mnDCeoKkRQ
+# 5Zmgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -2685,11 +2729,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFGiy6z7DyS+l82f3
-# 8Zxq6cDIppEvMA0GCSqGSIb3DQEBAQUABIIBALNcoN+99CZjseQ4UJpiGKPCIIgj
-# aoxVqzcwDp1UobG7Htcz/AnMiZe8IVQ8yK1mzaYpITQX9DDlpc0r2VwuYqXZH1Eh
-# gPg1DUKYg2QMt4jWoPAfAUUlNHm35FQlB4CG30Ri9Zq/iPKos7DyXwokF95DqiiH
-# J7vd6gl3uWQNbf6kGZb0veNeXc8f5ob1ZyXjR0vTAtRHgs1L3ZF4mRtOFi4LDYWs
-# mxET6L19T2rE1LW/euR/85JcYd1xm8Jglvb2q0j5wv96wZiHhZsxaaHUFk/1R6X1
-# cuvsoTJBWpNQQqSkCEiHdbgOEwcw8DtYDhMq4WoAJc7He9R4FWzA9OupH60=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFGdeaQoyCo1cj/mr
+# P5MwijjvsqMXMA0GCSqGSIb3DQEBAQUABIIBACxeuutoFT2KrbHunh1mGn207WD7
+# VQ/aDZnE/h8Y3i4Ovxia/Je38GDhgXQ0sCnL0G07MoyojZFS4McT27bK2vKNiLyh
+# yY8LO1DTdiXwOeIgF85TDZSBY6i3QJ3hXIq0SHTwsYnmdyruzRFUstNOqESeFPYD
+# KNT7YLdC9FzQwCM8jqGnh+HLhAjcHf+kVrcKEiAepcxXLyBdTjOBZq8f6WQEDkW7
+# uZvOKYdK/skJBrUFmWBplE4Adl7/BK/C8JkK+9Cb3KoiJzLFUC9LUhaWty6FDY4G
+# xctGg2Z7IMVr8ECXY/+CFcIZLxgWjL7GaJQHmDWtGl8nGM8kPPNcsfM6vIk=
 # SIG # End signature block
