@@ -536,8 +536,13 @@ function Install-Program {
                 $InstallPackageSplatParams.Add("RequiredVersion",$PackageManagementRequiredVersion)
             }
             if ($PreRelease) {
-                $LatestVersion = $(Find-Package $ProgramName -AllVersions)[-1].Version
-                $InstallPackageSplatParams.Add("MinimumVersion",$LatestVersion)
+                try {
+                    $LatestVersion = $(Find-Package $ProgramName -AllVersions -ErrorAction Stop)[-1].Version
+                    $InstallPackageSplatParams.Add("MinimumVersion",$LatestVersion)
+                }
+                catch {
+                    Write-Verbose "Unable to find latest PreRelease version...Proceeding with 'Install-Package' without the '-MinimumVersion' parameter..."
+                }
             }
             # NOTE: The PackageManagement install of $ProgramName is unreliable, so just in case, fallback to the Chocolatey cmdline for install
             $null = Install-Package @InstallPackageSplatParams
@@ -644,7 +649,7 @@ function Install-Program {
                 $stderr = $Process.StandardError.ReadToEnd()
                 $AllOutput = $stdout + $stderr
                 
-                if ($(clist --local-only $ProgramName)[1] -notmatch $ProgramName) {
+                if (![bool]$($(clist --local-only $ProgramName) -match $ProgramName)) {
                     Write-Error "There was a problem installing the program '$ProgramName' via 'cup $Arguments'! Halting!"
                     $global:FunctionResult = "1"
                     return
@@ -993,8 +998,8 @@ function Install-Program {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUmHf+SzKH5gK6v7teOOAfxJET
-# vPmgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUMHZRg6/Uj/AkImAJQ4VVLXMj
+# BCSgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -1051,11 +1056,11 @@ function Install-Program {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFPjtOQp9eoMTAp+4
-# wSZV/CFm+UjhMA0GCSqGSIb3DQEBAQUABIIBAKkbo4rvsN7jWtUX3dDjmF6QR7zL
-# bFKxh5VXaq20M7MR4uFJzPZtmScDp2M92fnUZ8xniYOhkHe2frteQQUVjDW2/a3N
-# pIcCiIFTDkLMhpyCbaNpyUUhbdEymoEQyid3+/aN0zB9MwlJGkddvYlsJESZ06LX
-# Z84pOTBTbcziFORdUJNUXySnqmXu9WL32Uon+HXnKAAHiCYEwasCaZozvDCg24EQ
-# xzrqNFkROWL05mS70wplGQ5gKddvpOXRN8n7FJ5m+wRvAOozO/jtAZRiRxGhB3VM
-# YPj9m0nAw8+0QFpt2DQWvmOdZMYx987hZlnFZOITjMjQvte7MiaSM6hr3TE=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFLw+ODgSsyQvxmBL
+# mrxg4IEvqHRRMA0GCSqGSIb3DQEBAQUABIIBAGw5FypZvjjIxn+2ciUIurZ3AKxh
+# sOjuZlbt8Qajb2Q8+sSqveS1pJEFWUsxRqKDIdouu9hzArVnOWCMXZFrUA0o8Tgh
+# qrzJ5E4/YR+L+TVEQf2O4GLdc9quH0Zklz9VZPe5Ejeh9f2+SZIBzuCOXuJJb0OY
+# S40VW7M0EkZHh9CFoOhuXOufawdMGVF7kN4oltscytYPu2M1HTkVFDpGup0pJ2tp
+# Ezow/REZOVGs3lnRaRcYhAFhuRjkdyignx5RmlmqIpAuvACAFPSvNpVoRU3LpPBk
+# Z6JkPqeAYWRYt034qKGTCwcLNtr6h2KvGye19zcK2onVWyY6Bq0mbHgvgAg=
 # SIG # End signature block

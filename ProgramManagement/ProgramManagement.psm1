@@ -1239,8 +1239,13 @@ function Install-Program {
                 $InstallPackageSplatParams.Add("RequiredVersion",$PackageManagementRequiredVersion)
             }
             if ($PreRelease) {
-                $LatestVersion = $(Find-Package $ProgramName -AllVersions)[-1].Version
-                $InstallPackageSplatParams.Add("MinimumVersion",$LatestVersion)
+                try {
+                    $LatestVersion = $(Find-Package $ProgramName -AllVersions -ErrorAction Stop)[-1].Version
+                    $InstallPackageSplatParams.Add("MinimumVersion",$LatestVersion)
+                }
+                catch {
+                    Write-Verbose "Unable to find latest PreRelease version...Proceeding with 'Install-Package' without the '-MinimumVersion' parameter..."
+                }
             }
             # NOTE: The PackageManagement install of $ProgramName is unreliable, so just in case, fallback to the Chocolatey cmdline for install
             $null = Install-Package @InstallPackageSplatParams
@@ -1347,7 +1352,7 @@ function Install-Program {
                 $stderr = $Process.StandardError.ReadToEnd()
                 $AllOutput = $stdout + $stderr
                 
-                if ($(clist --local-only $ProgramName)[1] -notmatch $ProgramName) {
+                if (![bool]$($(clist --local-only $ProgramName) -match $ProgramName)) {
                     Write-Error "There was a problem installing the program '$ProgramName' via 'cup $Arguments'! Halting!"
                     $global:FunctionResult = "1"
                     return
@@ -2203,6 +2208,12 @@ function Update-PackageManagement {
         return
     }
 
+    if ($PSVersionTable.PSEdition -eq "Core") {
+        Write-Error "The Update-PackageManagement function should only be used in Windows PowerShell, *not* PowerShell Core! Halting!"
+        $global:FunctionResult = "1"
+        return
+    }
+
     if ($PSVersionTable.PSEdition -eq "Core" -and $PSVersionTable.Platform -ne "Win32NT" -and $AddChocolateyPackageProvider) {
         Write-Error "The Chocolatey Repo should only be added on a Windows OS! Halting!"
         $global:FunctionResult = "1"
@@ -2671,8 +2682,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU/LoNxUhSb+lsC6mnDCeoKkRQ
-# 5Zmgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUUTdBEOxff6ykGb0vfTLDZDf5
+# A2Ggggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -2729,11 +2740,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFGdeaQoyCo1cj/mr
-# P5MwijjvsqMXMA0GCSqGSIb3DQEBAQUABIIBACxeuutoFT2KrbHunh1mGn207WD7
-# VQ/aDZnE/h8Y3i4Ovxia/Je38GDhgXQ0sCnL0G07MoyojZFS4McT27bK2vKNiLyh
-# yY8LO1DTdiXwOeIgF85TDZSBY6i3QJ3hXIq0SHTwsYnmdyruzRFUstNOqESeFPYD
-# KNT7YLdC9FzQwCM8jqGnh+HLhAjcHf+kVrcKEiAepcxXLyBdTjOBZq8f6WQEDkW7
-# uZvOKYdK/skJBrUFmWBplE4Adl7/BK/C8JkK+9Cb3KoiJzLFUC9LUhaWty6FDY4G
-# xctGg2Z7IMVr8ECXY/+CFcIZLxgWjL7GaJQHmDWtGl8nGM8kPPNcsfM6vIk=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFPHmg6YFa8M2Zi9H
+# QibPDfLuA9h0MA0GCSqGSIb3DQEBAQUABIIBAEvv/V6vUcdUN356LfOxmktHfEQv
+# cSCvCEyu2Pr8oVH+mWSL65SOqgMywgfT8eF9pEtt45311xG/y+MvoJjt/92jcFuy
+# BKYk3TvwiSm9J6IRzrpGO7pX17N5mI8FLf6Pdv6a5UzihSWHzTxWUPmX69Esnzhk
+# HmxAui5PbIL6R10IyuK88UeE1n0XP94VnRFIruy+H7MLe7ySN8BPKyHoePIa67pY
+# 8+Ln+n2hWOcsqjaJ2kP4D2QkbLkCEIjtm9c9OE9zowqRJyyzP2EE44uPRboKOtyF
+# gPCX9Xz+HmslkoDoPK56cK0nBdVYNIeRGkbZBKlbx+S/4eakjk6F6h1jr20=
 # SIG # End signature block

@@ -63,6 +63,12 @@ function Update-PackageManagement {
         return
     }
 
+    if ($PSVersionTable.PSEdition -eq "Core") {
+        Write-Error "The Update-PackageManagement function should only be used in Windows PowerShell, *not* PowerShell Core! Halting!"
+        $global:FunctionResult = "1"
+        return
+    }
+
     if ($PSVersionTable.PSEdition -eq "Core" -and $PSVersionTable.Platform -ne "Win32NT" -and $AddChocolateyPackageProvider) {
         Write-Error "The Chocolatey Repo should only be added on a Windows OS! Halting!"
         $global:FunctionResult = "1"
@@ -529,8 +535,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUTo6/RPYplsUMiCE2t7BNfC1r
-# 0PKgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUQDdKxEXCtcFReF6tqu2z1zHG
+# 7bigggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -587,11 +593,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFBmK4aPzSgJ5ugTA
-# VIyF0LQS4NDsMA0GCSqGSIb3DQEBAQUABIIBAK12Pi8UVCGWRThd07ABFmZOvhS8
-# 7QPswykDjqOUrjy7TGCEjQW3Qpr5krYAUbmuRGRclAEDvw+cLlUB6A2GUHTqbb+x
-# CtRR1nQk2oK1WraTIi4Rr1ip6AkTj0x/51I2vpBJzvr8zUgYrsdVYhOQftLjbck/
-# nQcc5AXRuGIEOZ1/v/VH+7mg+UzSFfETZMDK1rf1b3IuQfMCGbfuVM8yt7+NHuyq
-# t+tMh1UIAdOW+1T4ILjC9v1LdA5uxXSgiyU1WmrQp63NvkoG6YWXqJaRkQ6f/VyZ
-# dzVC+j1/JndPkU7D3ff5jxbtN3PnF1qGspMTOzwt4kYUi69mxL2ueusbQOo=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFOlw1WjBMXphkx2q
+# D+bwhiXVwWTfMA0GCSqGSIb3DQEBAQUABIIBAL/mDK/6UAGpkc3zqjTs2ljL5/4M
+# SWWNBJbjwMOY79CFzWMWVzVQxoxwf6zAE6311eI/z42uzqW/bsZBaLcva/H2VdAA
+# pvwlUTOml2pjq7WVlPSkjmjbdl5y6iPGv0rZiglaMsNIVn47102qvutXRo0oE/aP
+# EIXFvGvZ4l6ygUVfGa6wfYyjEo+N9Qcbfvw/yb124CqtgQm63788Ryzlc3T4XsLf
+# 3ejd0mbgZIUWPiqIG4rFIpef9rz3VlUfcfg4N7bQPOPMuar4lKOWHxWoLB2hiYYi
+# D2vlqiRCGI/tESCjzu5/XB61oaVOy/PU4cBGuX3PS9O4sCPbBuTApaGPQUw=
 # SIG # End signature block
