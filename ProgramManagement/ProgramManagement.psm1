@@ -1472,10 +1472,29 @@ function Install-Program {
                             elseif (Test-Path "C:\Chocolatey") {
                                 $ChocoPath = "C:\Chocolatey"
                             }
-                            $ChocoInstallerModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match $ProgramName -and $_.FullName -match "chocolateyinstaller\.psm1"}
-                            $ChocoProfileModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match $ProgramName -and $_.FullName -match "chocolateyProfile\.psm1"}
-                            $ChocoScriptRunnerFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match $ProgramName -and $_.FullName -match "chocolateyScriptRunner\.ps1"}
-                            $ChocoTabExpansionFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match $ProgramName -and $_.FullName -match "chocolateyTabExpansion\.ps1"}
+                            $ChocoInstallerModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "chocolateyinstaller\.psm1"}
+                            $ChocoProfileModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "chocolateyProfile\.psm1"}
+                            $ChocoScriptRunnerFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "chocolateyScriptRunner\.ps1"}
+                            $ChocoTabExpansionFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "chocolateyTabExpansion\.ps1"}
+                            
+                            if (!$ChocoInstallerModuleFileItem -or !$ChocoProfileModuleFileItem) {
+                                $ChocoResourcesPath = "$ChocoPath\lib\chocolatey.resources"
+                                $null = New-Item -ItemType Directory -Path $ChocoResourcesPath -Force
+                                $ChocoMasterSrcZipUri = "https://github.com/chocolatey/choco/archive/master.zip"
+                                $ChocoMasterOutFile = "$HOME\Downloads\ChocoMaster.zip"
+                                Invoke-WebRequest -Uri $ChocoMasterSrcZipUri -OutFile $ChocoMasterOutFile
+                                UnzipFile -PathToZip $ChocoMasterOutFile -TargetDir $ChocoResourcesPath -SpecificItem 'chocolatey\.resources\\helpers$'
+
+                                $ChocoInstallerModuleFileItem = Get-ChildItem -Path $ChocoResourcesPath -Recurse -File | Where-Object {$_.FullName -match "chocolateyinstaller\.psm1"}
+                                $ChocoProfileModuleFileItem = Get-ChildItem -Path $ChocoResourcesPath -Recurse -File | Where-Object {$_.FullName -match "chocolateyProfile\.psm1"}
+                                $ChocoScriptRunnerFileItem = Get-ChildItem -Path $ChocoResourcesPath -Recurse -File | Where-Object {$_.FullName -match "chocolateyScriptRunner\.ps1"}
+                                $ChocoTabExpansionFileItem = Get-ChildItem -Path $ChocoResourcesPath -Recurse -File | Where-Object {$_.FullName -match "chocolateyTabExpansion\.ps1"}
+
+                                if (!$ChocoInstallerModuleFileItem -or !$ChocoProfileModuleFileItem) {
+                                    throw "Unable to find chocolateyInstaller.psm1 or chocolateyProfile.psm1"
+                                }
+                            }
+
                             if ($ChocoInstallerModuleFileItem) {
                                 Import-Module $ChocoInstallerModuleFileItem.FullName -ErrorAction SilentlyContinue
                                 $ChocoHelpersDir = $ChocoInstallerModuleFileItem.Directory
@@ -1489,7 +1508,7 @@ function Install-Program {
                             }
                             elseif ($ChocoTabExpansionFileItem) {
                                 $ChocoHelpersDir = $ChocoTabExpansionFileItem.Directory
-                            }
+                            }                            
                             
                             # Run the install script
                             $tempfile = [IO.Path]::Combine([IO.Path]::GetTempPath(), [IO.Path]::GetRandomFileName())
@@ -2682,8 +2701,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUUTdBEOxff6ykGb0vfTLDZDf5
-# A2Ggggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUTJuzPlNgB1clS87Mmbm4fszZ
+# zX+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -2740,11 +2759,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFPHmg6YFa8M2Zi9H
-# QibPDfLuA9h0MA0GCSqGSIb3DQEBAQUABIIBAEvv/V6vUcdUN356LfOxmktHfEQv
-# cSCvCEyu2Pr8oVH+mWSL65SOqgMywgfT8eF9pEtt45311xG/y+MvoJjt/92jcFuy
-# BKYk3TvwiSm9J6IRzrpGO7pX17N5mI8FLf6Pdv6a5UzihSWHzTxWUPmX69Esnzhk
-# HmxAui5PbIL6R10IyuK88UeE1n0XP94VnRFIruy+H7MLe7ySN8BPKyHoePIa67pY
-# 8+Ln+n2hWOcsqjaJ2kP4D2QkbLkCEIjtm9c9OE9zowqRJyyzP2EE44uPRboKOtyF
-# gPCX9Xz+HmslkoDoPK56cK0nBdVYNIeRGkbZBKlbx+S/4eakjk6F6h1jr20=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFNc00dRyhS5n28h5
+# sGX7Iom+ZZmlMA0GCSqGSIb3DQEBAQUABIIBAEPT8YH4andlOrTdXwPwHtecTjRa
+# kBMbg4lwVX8btWs06xrASNRMVBHA2/Yxp+Cy9S8b5dqcvSXMrKTLVMoZ0Z+MTELe
+# fbI4/JGSp6oZznklQqwu/2S2cQW4N5XvnvU4m9oJw/KGfP+jLVVJ/s3DUXY5d1Up
+# o8mww37L43l/WwHwDoaJPDDCjiHjaFTT30UE1hrLwDgGywX8H/04N0hkQdT4ScrG
+# AD+XyL0LvD9//qtm+X1DTaVCzwYINZCSglTohl9CBiWenbyjjf6Qf8v+sT5QYiPy
+# DcnkS3OW4yfm5+F4eRulMjbgBQ+i4fqUht9lDxzZoc3NE4agXZRlFx7ecl8=
 # SIG # End signature block

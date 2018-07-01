@@ -59,6 +59,7 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
         $Commands -contains 'GetMSIFileInfo' | Should Be $False
         $Commands -contains 'GetNativePath' | Should Be $False
         $Commands -contains 'PauseForWarning' | Should Be $False
+        $Commands -contains 'UnzipFile' | Should Be $False
 
         $Commands -contains 'Get-AllPackageInfo' | Should Be $True
         $Commands -contains 'Get-InstalledProgramsFromRegistry' | Should Be $True
@@ -76,14 +77,15 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
         [bool]$Module.Invoke({Get-Item function:GetElevation}) | Should Be $True
         [bool]$Module.Invoke({Get-Item function:GetNativePath}) | Should Be $True
         [bool]$Module.Invoke({Get-Item function:PauseForWarning}) | Should Be $True
+        [bool]$Module.Invoke({Get-Item function:UnzipFile}) | Should Be $True
     }
 }
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU0Se3sHaqJd+SEozf0BL/+NCT
-# u2+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUnJnW96yErsIN/rYGBBzTCdUh
+# sCygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -140,11 +142,11 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFMDoXydTCOnnNWNO
-# ITDKb+vS/HHNMA0GCSqGSIb3DQEBAQUABIIBAAaftQxkUNA8CXt6fJMd9KEO10Vk
-# OvEMmpm1K3uVYQzgDWKHBbvzzJpyBnvIhuEv/lZVXDgOjSHvdBS5iFoJeUpSh4WI
-# 5+s/Jqa3td1bINNi08JlyfRdkaLU/HNjYPxYsm166lFk911sCgA9YD3VI7bNc71D
-# z/AJ74bMt/iF+ynE2TiYVKgIFftmpdluVO3tsEjBYfStH31+t8lYnsWjmS+gPjmt
-# 6L3+b/o809VIDoOkBfXvf4pVjJ82I+1tmoJeXCE4jqgS6lOkH3tWVgXAECb5Son6
-# KshlKgQUsH9+ER2YFv5v+jEZzdbIRHOotHOAA3eJxlABPWWAiUkeGH9i4ps=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFLpnUrC/jYsdmguH
+# REE8/sszaJYdMA0GCSqGSIb3DQEBAQUABIIBAHWQtJg5oWFQGIXViKNv2EwdWB+f
+# JY1hgICEV2kxFNZMfD0CurFcfzZwWV1F9jPu8Ed/h1v1I1P66zcXqExgutRYGMKg
+# OW3OT+jfQ0L6NV9MrL2jut7aMrRF2vUT5dDHx2qKMjkS7EyC6dOkTtQZAOJl5mQz
+# hxuzasuPRm0XMSc/KCJYP44cdrWMz46at9e4ee1rWoBnaQytm33A2BtqxUg+rY4e
+# n0Jxuqt02Z9kw/4bL7Rqd9V/AeedWxAxi9I7gwxR6k9XECC1Xz83WSb/6EaIlkKx
+# dYozQeRgykrRSej/gnu4u+oOcypZZmuzfR+tzIwjAr1ZEx/Y6G7VbuZmWMA=
 # SIG # End signature block
