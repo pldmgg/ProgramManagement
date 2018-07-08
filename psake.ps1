@@ -116,6 +116,30 @@ if ($ModulesToInstallAndImport.Count -gt 0) {
 
     Add-Content -Value $FunctionTextToAdd -Path "$env:BHModulePath\$env:BHProjectName.psm1"
 
+    # Finally, add array $FunctionsForSBUse in case we want to use this Module Remotely
+    $FunctionsForSBUseString = @'
+[System.Collections.ArrayList]$FunctionsForSBUse = @(
+    ${Function:AddLastWriteTimeToRegKey}.Ast.Extent.Text 
+    ${Function:GetElevation}.Ast.Extent.Text
+    ${Function:GetModuleDependencies}.Ast.Extent.Text
+    ${Function:GetMSIFileInfo}.Ast.Extent.Text
+    ${Function:GetNativePath}.Ast.Extent.Text
+    ${Function:InvokeModuleDependencies}.Ast.Extent.Text
+    ${Function:InvokePSCompatibility}.Ast.Extent.Text
+    ${Function:PauseForWarning}.Ast.Extent.Text
+    ${Function:UnzipFile}.Ast.Extent.Text
+    ${Function:Get-AllPackageInfo}.Ast.Extent.Text
+    ${Function:Get-InstalledProgramsFromRegistry}.Ast.Extent.Text
+    ${Function:Install-ChocolateyCmdLine}.Ast.Extent.Text
+    ${Function:Install-Program}.Ast.Extent.Text
+    ${Function:Uninstall-Program}.Ast.Extent.Text
+    ${Function:Update-ChocolateyEnv}.Ast.Extent.Text
+    ${Function:Update-PackageManagement}.Ast.Extent.Text
+)
+'@
+
+    Add-Content -Value $FunctionsForSBUseString -Path "$env:BHModulePath\$env:BHProjectName.psm1"
+
     if ($Cert) {
         # At this point the .psm1 is finalized, so let's sign it
         try {

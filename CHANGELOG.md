@@ -1,5 +1,9 @@
 # Change log
 
+## 0.9.2 (July 7, 2018)
+
+- Updated psake and added PSCompatibility Functions
+
 ## 0.9.1 (July 1, 2018)
 
 - Fixed issue with expected Chocolatey resource path
