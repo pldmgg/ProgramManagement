@@ -116,29 +116,10 @@ if ($ModulesToInstallAndImport.Count -gt 0) {
 
     Add-Content -Value $FunctionTextToAdd -Path "$env:BHModulePath\$env:BHProjectName.psm1"
 
-    # Finally, add array $FunctionsForSBUse in case we want to use this Module Remotely
-    $FunctionsForSBUseString = @'
-[System.Collections.ArrayList]$FunctionsForSBUse = @(
-    ${Function:AddLastWriteTimeToRegKey}.Ast.Extent.Text 
-    ${Function:GetElevation}.Ast.Extent.Text
-    ${Function:GetModuleDependencies}.Ast.Extent.Text
-    ${Function:GetMSIFileInfo}.Ast.Extent.Text
-    ${Function:GetNativePath}.Ast.Extent.Text
-    ${Function:InvokeModuleDependencies}.Ast.Extent.Text
-    ${Function:InvokePSCompatibility}.Ast.Extent.Text
-    ${Function:PauseForWarning}.Ast.Extent.Text
-    ${Function:UnzipFile}.Ast.Extent.Text
-    ${Function:Get-AllPackageInfo}.Ast.Extent.Text
-    ${Function:Get-InstalledProgramsFromRegistry}.Ast.Extent.Text
-    ${Function:Install-ChocolateyCmdLine}.Ast.Extent.Text
-    ${Function:Install-Program}.Ast.Extent.Text
-    ${Function:Uninstall-Program}.Ast.Extent.Text
-    ${Function:Update-ChocolateyEnv}.Ast.Extent.Text
-    ${Function:Update-PackageManagement}.Ast.Extent.Text
-)
-'@
-
-    Add-Content -Value $FunctionsForSBUseString -Path "$env:BHModulePath\$env:BHProjectName.psm1"
+    # Finally, add array the variables contained in VariableLibrary.ps1 if it exists in case we want to use this Module Remotely
+    if (Test-Path "$env:BHModulePath\VariableLibrary.ps1") {
+        Get-Content "$env:BHModulePath\VariableLibrary.ps1" | Add-Content "$env:BHModulePath\$env:BHProjectName.psm1"
+    }
 
     if ($Cert) {
         # At this point the .psm1 is finalized, so let's sign it
@@ -230,8 +211,8 @@ Task Deploy -Depends Build {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUE+k9wrEZGdnXkqkZySqvrY5L
-# bBygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUSuUv0rA0c6kQ2L8ilvMzymUr
+# psegggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -288,11 +269,11 @@ Task Deploy -Depends Build {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFA8AlB4lHe9aRvUu
-# ADMvKFTa1Wd5MA0GCSqGSIb3DQEBAQUABIIBAGAMWYZad/Rt0wWfz/sjh3eTvhk5
-# T85VHfTYojJ2+pIUw+z4lul0CxcFwY4BYIwkAz1zZPMDFjgaP8N45/KO0TLH1zGQ
-# btTYmO+wS0AHV+gLUFKZ7fH2xr3nnu3b5MgJyItZGLKSx2ey55lGi7wCcO6MPlel
-# rnYDBat5Cf7cbLocwzb6opfQTr6+KhjEzA9hvH2Iet6aj82lDjwhc1KgMFsLYP09
-# jEZwhmJKHgyWbY58VCAQZItsooyCJHphQ9u9AAggsG2d+JpoemY0qOzlf9iJ2SS6
-# e7gmH2ZtF1wXbprMLsUrbUvstYH/vYEkPbD8AxsnOtrvTgdcAy7RUxGUUcs=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFNG4BKmzUk08wXbR
+# cNiy27KsQAEjMA0GCSqGSIb3DQEBAQUABIIBAJSZ6I06pWAwgjnnnp7hK9DM7o24
+# n4CxtkmZwe/BgvQs4v9vnuOqg1LxCGJu0iJYmnUu5OloMpY/VStOLBFGMQfniI9u
+# +Vx3nG0eUew1rpd5rdLsaIo/U7jDUmt5np9GwwZ6q80NMAZ9rfvTq2ZeU7PHY/8V
+# BW0Nk2JpQhZKibOu+aLlzX2EsuotdTSjs0izb/EBbX3WBtp03jB8es3ws6YlkTuj
+# VvJtWjcjhLP9oH3tcyk0qpBe5/zYYqf1ZeLfEM+eig+S/7eWDOQ8xqcN8Z5dJa5L
+# ZrbYlryQZqb8MmOQOwwikj44z2bbLS6aMdI/RoRlP+nsFvZ8+Fkf/mu9svU=
 # SIG # End signature block
