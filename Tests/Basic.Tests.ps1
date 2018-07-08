@@ -56,8 +56,11 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
         $Commands = $Module.ExportedCommands.Keys
         $Commands -contains 'AddLastWriteTimeToRegKeys' | Should Be $False
         $Commands -contains 'GetElevation' | Should Be $False
+        $Commands -contains 'GetModuleDependencies' | Should Be $False
         $Commands -contains 'GetMSIFileInfo' | Should Be $False
         $Commands -contains 'GetNativePath' | Should Be $False
+        $Commands -contains 'InvokeModuleDependencies' | Should Be $False
+        $Commands -contains 'InvokePSCompatibility' | Should Be $False
         $Commands -contains 'PauseForWarning' | Should Be $False
         $Commands -contains 'UnzipFile' | Should Be $False
 
@@ -73,9 +76,12 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
     It "Module '$env:BHProjectName' Private Functions Are Available in Internal Scope" {
         $Module = Get-Module $env:BHProjectName
         [bool]$Module.Invoke({Get-Item function:AddLastWriteTimeToRegKeys}) | Should Be $True
-        [bool]$Module.Invoke({Get-Item function:GetMSIFileInfo}) | Should Be $True
         [bool]$Module.Invoke({Get-Item function:GetElevation}) | Should Be $True
+        [bool]$Module.Invoke({Get-Item function:ModuleDependencies}) | Should Be $True
+        [bool]$Module.Invoke({Get-Item function:GetMSIFileInfo}) | Should Be $True
         [bool]$Module.Invoke({Get-Item function:GetNativePath}) | Should Be $True
+        [bool]$Module.Invoke({Get-Item function:InvokeModuleDependencies}) | Should Be $True
+        [bool]$Module.Invoke({Get-Item function:InvokePSCompatibility}) | Should Be $True
         [bool]$Module.Invoke({Get-Item function:PauseForWarning}) | Should Be $True
         [bool]$Module.Invoke({Get-Item function:UnzipFile}) | Should Be $True
     }

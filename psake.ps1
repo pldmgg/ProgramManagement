@@ -81,100 +81,22 @@ foreach ($import in $Private) {
     }
 }
 
-# Install-PSDepend if necessary so that we can install any dependency Modules
-if ($(Test-Path "$PSScriptRoot\module.requirements.psd1")) {
-    if (![bool]$(Get-Module -ListAvailable PSDepend -ErrorAction SilentlyContinue)) {
-        try {
-            if ($PSVersionTable.PSEdition -eq "Desktop") {
-                [string]$UserModulePath = Join-Path $([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules'
-            }
-            else {
-                [string]$UserModulePath = Join-Path $([Environment]::GetFolderPath('MyDocuments')) 'PowerShell\Modules'
-            }
-            
-            $ExistingProgressPreference = "$ProgressPreference"
-            $ProgressPreference = 'SilentlyContinue'
-            # Bootstrap nuget if we don't have it
-            if ([bool]$(Get-ChildItem 'nuget.exe' -ErrorAction SilentlyContinue)) {
-                $NugetPath = $(Get-ChildItem nuget.exe).FullName
-            }
-            else {
-                $NugetPath = $(Get-Command 'nuget.exe' -ErrorAction SilentlyContinue).Path
-            }
-            
-            if (![bool]$NugetPath) {
-                $NugetPath = Join-Path $env:USERPROFILE nuget.exe
-                if (![bool]$(Test-Path $NugetPath)) {
-                    Invoke-WebRequest -Uri 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' -UseBasicParsing -OutFile $NugetPath
-                }
-            }
-    
-            # Bootstrap PSDepend, re-use nuget.exe for the module
-            if (!$(Test-Path $UserModulePath)) { $null = New-Item -ItemType Directory $UserModulePath -Force }
-            $NugetParams = 'install', 'PSDepend', '-Source', 'https://www.powershellgallery.com/api/v2/',
-                        '-ExcludeVersion', '-NonInteractive', '-OutputDirectory', $UserModulePath
-            & $NugetPath @NugetParams
-            if (!$(Test-Path "$(Join-Path $UserModulePath PSDepend)\nuget.exe")) {
-                Move-Item -Path $NugetPath -Destination "$(Join-Path $UserModulePath PSDepend)\nuget.exe" -Force
-            }
-            $ProgressPreference = $ExistingProgressPreference
-        }
-        catch {
-            Write-Error $_
-            Write-Error "Installing the PSDepend Module failed! The $ThisModule Module will not be loaded. Halting!"
-            $ProgressPreference = $ExistingProgressPreference
-            Write-Warning "Please unload the $ThisModule Module via:`nRemove-Module $ThisModule"
-            $global:FunctionResult = "1"
-            return
-        }
-    }
-    
-    if (![bool]$(Get-Module PSDepend -ErrorAction SilentlyContinue)) {
-        try {
-            Import-Module PSDepend
-        }
-        catch {
-            Write-Error $_
-            Write-Warning "Please unload the $ThisModule Module via:`nRemove-Module $ThisModule"
-            $global:FunctionResult = "1"
-            return
-        }
-    }
+[System.Collections.Arraylist]$ModulesToInstallAndImport = @()
+if (Test-Path "$PSScriptRoot\module.requirements.psd1") {
+    $ModuleManifestData = Import-PowerShellDataFile "$PSScriptRoot\module.requirements.psd1"
+    $ModuleManifestData.Keys | Where-Object {$_ -ne "PSDependOptions"} | foreach {$null = $ModulesToinstallAndImport.Add($_)}
+}
 
-    # Before we Invoke-PSDepend on module.requirements.psd1, make sure that the Target directory
-    # for Modules fits with the version of PowerShell that we're using
-    if ($PSVersionTable.PSEdition -eq "Core") {
-        # Make sure the PowerShell Core User Scope Module Directory exists. If not, create it.
-        if (!$(Test-Path "$HOME\Documents\PowerShell\Modules")) {
-            $null = New-Item -ItemType Directory -Path "$HOME\Documents\PowerShell\Modules" -Force
-        }
-        $ModReqsContent = Get-Content "$PSScriptRoot\module.requirements.psd1"
-        $ModReqsLineToReplace = $($ModReqsContent | Select-String -Pattern "[\s]+Target[\s]=[\s]").Line
-        $UpdatedModReqsContent = $ModReqsContent -replace [regex]::Escape($ModReqsLineToReplace),"        Target = '$ENV:USERPROFILE\Documents\PowerShell\Modules'"
-        Set-Content -Path "$PSScriptRoot\module.requirements.psd1" -Value $UpdatedModReqsContent 
+if ($ModulesToInstallAndImport.Count -gt 0) {
+    # NOTE: If you're not sure if the Required Module is Locally Available or Externally Available,
+    # add it the the -RequiredModules string array just to be certain
+    $InvModDepSplatParams = @{
+        RequiredModules                     = $ModulesToInstallAndImport
+        InstallModulesNotAvailableLocally   = $True
+        ErrorAction                         = "SilentlyContinue"
+        WarningAction                       = "SilentlyContinue"
     }
-    if ($PSVersionTable.PSEdition -ne "Core") {
-        # Make sure the PowerShell Core User Scope Module Directory exists. If not, create it.
-        if (!$(Test-Path "$HOME\Documents\WindowsPowerShell\Modules")) {
-            $null = New-Item -ItemType Directory -Path "$HOME\Documents\WindowsPowerShell\Modules" -Force
-        }
-        $ModReqsContent = Get-Content "$PSScriptRoot\module.requirements.psd1"
-        $ModReqsLineToReplace = $($ModReqsContent | Select-String -Pattern "[\s]+Target[\s]=[\s]").Line
-        $UpdatedModReqsContent = $ModReqsContent -replace [regex]::Escape($ModReqsLineToReplace),"        Target = '$ENV:USERPROFILE\Documents\WindowsPowerShell\Modules'"
-        Set-Content -Path "$PSScriptRoot\module.requirements.psd1" -Value $UpdatedModReqsContent 
-    }
-
-    # Install Dependencies if they're not already
-    try {
-        $null = Invoke-PSDepend -Path "$PSScriptRoot\module.requirements.psd1" -Install -Import -Force
-    }
-    catch {
-        Write-Error $_
-        Write-Error "Problem with the PSDepend Module Installing/Importing Module Dependencies! The $ThisModule Module will not be loaded. Halting!"
-        Write-Warning "Please unload the $ThisModule Module via:`nRemove-Module $ThisModule"
-        $global:FunctionResult = "1"
-        return
-    }
+    $ModuleDependenciesMap = InvokeModuleDependencies @InvModDepSplatParams
 }
 
 # Public Functions
