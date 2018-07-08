@@ -77,7 +77,7 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
         $Module = Get-Module $env:BHProjectName
         [bool]$Module.Invoke({Get-Item function:AddLastWriteTimeToRegKeys}) | Should Be $True
         [bool]$Module.Invoke({Get-Item function:GetElevation}) | Should Be $True
-        [bool]$Module.Invoke({Get-Item function:ModuleDependencies}) | Should Be $True
+        [bool]$Module.Invoke({Get-Item function:GetModuleDependencies}) | Should Be $True
         [bool]$Module.Invoke({Get-Item function:GetMSIFileInfo}) | Should Be $True
         [bool]$Module.Invoke({Get-Item function:GetNativePath}) | Should Be $True
         [bool]$Module.Invoke({Get-Item function:InvokeModuleDependencies}) | Should Be $True
@@ -90,8 +90,8 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUnJnW96yErsIN/rYGBBzTCdUh
-# sCygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUlWJm1t8In/1GfxlwT37fGtC2
+# /z+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -148,11 +148,11 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFLpnUrC/jYsdmguH
-# REE8/sszaJYdMA0GCSqGSIb3DQEBAQUABIIBAHWQtJg5oWFQGIXViKNv2EwdWB+f
-# JY1hgICEV2kxFNZMfD0CurFcfzZwWV1F9jPu8Ed/h1v1I1P66zcXqExgutRYGMKg
-# OW3OT+jfQ0L6NV9MrL2jut7aMrRF2vUT5dDHx2qKMjkS7EyC6dOkTtQZAOJl5mQz
-# hxuzasuPRm0XMSc/KCJYP44cdrWMz46at9e4ee1rWoBnaQytm33A2BtqxUg+rY4e
-# n0Jxuqt02Z9kw/4bL7Rqd9V/AeedWxAxi9I7gwxR6k9XECC1Xz83WSb/6EaIlkKx
-# dYozQeRgykrRSej/gnu4u+oOcypZZmuzfR+tzIwjAr1ZEx/Y6G7VbuZmWMA=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFNR4Sx7uFKWMIefi
+# wEp2l21Ddb/cMA0GCSqGSIb3DQEBAQUABIIBAF4asOfav24Y/bXaIbtAJxDowyzL
+# muvkqk+Vk4oF/1H9GnYH/actT0DrFF0mem2qC+lzNO9/Cl6gEZQZiOUM+JqcWPU+
+# RJEloB8dxDMsGEXV09M3rQ13moHf5EaxK5UN8e5XxO1JTlqX5aShNq/9TQtBJ/FE
+# pHMmCmJRIaYsis8BpblpfH9j8eRm0eUrslKa5jnXmqsX7OhYxnhIIC6YTT+hHsz1
+# eKmxL3USIz+vjlPKEaAPzBJg8O17pshGCvrDnZEjxv1ZPZ4DoqhFRWVboKnDmUXK
+# fobNE4A4fId6UftXSbpdB1mki4X03hJ38rCOASIrCPlZ0eK2KFVm9MCpel0=
 # SIG # End signature block

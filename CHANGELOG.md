@@ -1,6 +1,6 @@
 # Change log
 
-## 0.9.2 (July 7, 2018)
+## 0.9.2 (July 8, 2018)
 
 - Updated psake and added PSCompatibility Functions
 
