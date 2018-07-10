@@ -1,4 +1,4 @@
-[System.Collections.ArrayList]$FunctionsForSBUse = @(
+[System.Collections.ArrayList]$script:FunctionsForSBUse = @(
     ${Function:AddLastWriteTimeToRegKey}.Ast.Extent.Text 
     ${Function:GetElevation}.Ast.Extent.Text
     ${Function:GetModuleDependencies}.Ast.Extent.Text

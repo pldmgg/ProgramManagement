@@ -1,5 +1,9 @@
 # Change log
 
+## 0.9.4 (July 10, 2018)
+
+- Additional updates to psake
+
 ## 0.9.3 (July 8, 2018)
 
 - Updated psake
