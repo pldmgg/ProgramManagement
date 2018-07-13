@@ -805,16 +805,17 @@ function Install-Program {
                             }
                             elseif ($ChocoTabExpansionFileItem) {
                                 $ChocoHelpersDir = $ChocoTabExpansionFileItem.Directory
-                            }                            
+                            }
                             
                             # Run the install script
-                            # Need to change default 7z execution behavior in order to suppress 7z output
                             $tempfile = [IO.Path]::Combine([IO.Path]::GetTempPath(), [IO.Path]::GetRandomFileName())
+                            <#
                             $ChocoScriptContent = Get-Content $ChocolateyInstallScript
                             $LineToReplace = $ChocoScriptContent -match "-nonewwindow -wait"
                             $UpdatedLine = $LineToReplace + "-RedirectStandardOutput `"$tempfile`""
                             $UpdatedChocoScriptContent = $ChocoScriptContent -replace [regex]::Escape($LineToReplace),$UpdatedLine
                             Set-Content -Path $ChocolateyInstallScript -Value $UpdatedChocoScriptContent
+                            #>
                             $null = & $ChocolateyInstallScript *>$tempfile
                             #$null = Start-Process powershell -ArgumentList "& `"$ChocolateyInstallScript`"" -NoNewWindow -Wait -RedirectStandardOutput $tempfile
                             if (Test-Path $tempfile) {Remove-Item $tempfile -Force}
@@ -838,7 +839,8 @@ function Install-Program {
                         }
                         catch {
                             Write-Error $_
-                            Write-Error "The Chocolatey Install Script $ChocolateyInstallScript has failed!"
+                            Write-Warning "The Chocolatey Install Script $ChocolateyInstallScript has failed!"
+                            Write-Host "Installing via Chocolatey CmdLine..."
 
                             # If PackageManagement/PowerShellGet is ERRONEOUSLY reporting that the program was installed
                             # use the Uninstall-Package cmdlet to wipe it out. This scenario happens when PackageManagement/
@@ -865,9 +867,6 @@ function Install-Program {
                                 }
                                 if ($InstallProgramSplatParams.Keys -notcontains "UseChocolateyCmdLine") {
                                     $InstallProgramSplatParams.Add("UseChocolateyCmdLine",$True)
-                                }
-                                if ($InstallProgramSplatParams.Keys -notcontains "NoUpdatePackageManagement") {
-                                    $InstallProgramSplatParams.Add("NoUpdatePackageManagement",$True)
                                 }
                                 $PMInstall = $False
                                 Install-Program @InstallProgramSplatParams
@@ -985,8 +984,9 @@ function Install-Program {
     if ($AlreadyInstalled) {
         $InstallAction = "AlreadyInstalled"
     }
-    elseif ($PackageManagementCurrentInstalledPackage.Version -ne $PackageManagementLatestVersion.Version -or
-    $ChocolateyOutdatedProgramsPSObjects.ProgramName -contains $ProgramName
+    elseif ($($PackageManagementCurrentInstalledPackage.Version -ne $null -and
+    $PackageManagementCurrentInstalledPackage.Version -ne $PackageManagementLatestVersion.Version -and $PMInstall) -or
+    $($ChocolateyOutdatedProgramsPSObjects.ProgramName -contains $ProgramName)
     ) {
         $InstallAction = "Updated"
     }
@@ -1024,8 +1024,8 @@ function Install-Program {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUMEFtXq7IDt5F/0cF6Eksn/1r
-# bOmgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUSEEMXU3Gb0MyeVf1TEc63Sd8
+# 9FGgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -1082,11 +1082,11 @@ function Install-Program {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFDPey3nRv3+YFmip
-# LuFvLjfIr+YcMA0GCSqGSIb3DQEBAQUABIIBAJ8s6fkaYYbLoEpdyLsH9+emEYeM
-# zFfy6Jdo3LK0/GHW6xT4pNmbFrbU9P1sk6ZYLI9/GKbUYY0iQr0YbY1iQ6r+5a8O
-# V7Vkak9/Yo44QFhPGujL7JpwxKNev2v3C+Ho3f7GZc4zm+yZPt5UKEUT2hO5gcP9
-# 6aZV1qPJwrnYJ+BB12GUCUszTfSE0kRP89iAwYh8EXo2sLWdqszk1DMflRCiP8bc
-# EMeVEO6CCcjrW9SVBxWL4KrJdj2IXxBtMZ42vmG6FGymAZEhjqCpxJLZsptuMXIM
-# N8x1ZvTIjkxJkDxD1ksI5XKmUmVmeOlKgYK8AenZ7NSkpzoxz/HXe/zGpDo=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFILrRUrJ3B8qUYc9
+# 0ZSkv8XksaHkMA0GCSqGSIb3DQEBAQUABIIBAMTZL50WNYFKql+iHxBcLntDPeYg
+# Lynt0Be4nwv7ze/ep1Charj+a+q3sToX8S/E/mEjDti77WLpLGUi/I/xZrJPEqum
+# lYTljrs2hO8PnZenGxBBO8wdQ7RX4u0zz9T/E64H4NJZVnSYWtI4Xy/F8ySgEeqm
+# X+dqp8M2e2vQMOHmuEvlHA/uIlvr0ojVeE0ZtB9lPYZ+6hA/nVLRSn88pQukvxVO
+# 7Qq940E+iRHzCJ+iy09me0Lc0qXnnVDumWUtb+d4bTD/umDfQYuj+RRH6s9G8/HF
+# H0QFL8FJ/OT/A1ih7Jgur94d85RABvPytL2TxRoaVau27F2EJLJiHxxriWY=
 # SIG # End signature block

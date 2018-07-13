@@ -1386,7 +1386,6 @@ function Install-Program {
                     if ($ChocolateyInstallScript) {
                         try {
                             Write-Host "Trying the Chocolatey Install script from $ChocolateyInstallScript..." -ForegroundColor Yellow
-                            Write-Host "hereA"
 
                             # Make sure Chocolatey Modules / helper scripts are loaded
                             if (Test-Path "C:\ProgramData\chocolatey") {
@@ -1431,17 +1430,18 @@ function Install-Program {
                             }
                             elseif ($ChocoTabExpansionFileItem) {
                                 $ChocoHelpersDir = $ChocoTabExpansionFileItem.Directory
-                            }                            
+                            }
                             
                             # Run the install script
-                            # Need to change default 7z execution behavior in order to suppress 7z output
                             $tempfile = [IO.Path]::Combine([IO.Path]::GetTempPath(), [IO.Path]::GetRandomFileName())
+                            <#
                             $ChocoScriptContent = Get-Content $ChocolateyInstallScript
                             $LineToReplace = $ChocoScriptContent -match "-nonewwindow -wait"
                             $UpdatedLine = $LineToReplace + "-RedirectStandardOutput `"$tempfile`""
                             $UpdatedChocoScriptContent = $ChocoScriptContent -replace [regex]::Escape($LineToReplace),$UpdatedLine
                             Set-Content -Path $ChocolateyInstallScript -Value $UpdatedChocoScriptContent
-                            $null = & $ChocolateyInstallScript
+                            #>
+                            $null = & $ChocolateyInstallScript *>$tempfile
                             #$null = Start-Process powershell -ArgumentList "& `"$ChocolateyInstallScript`"" -NoNewWindow -Wait -RedirectStandardOutput $tempfile
                             if (Test-Path $tempfile) {Remove-Item $tempfile -Force}
 
@@ -1464,7 +1464,8 @@ function Install-Program {
                         }
                         catch {
                             Write-Error $_
-                            Write-Error "The Chocolatey Install Script $ChocolateyInstallScript has failed!"
+                            Write-Warning "The Chocolatey Install Script $ChocolateyInstallScript has failed!"
+                            Write-Host "Installing via Chocolatey CmdLine..."
 
                             # If PackageManagement/PowerShellGet is ERRONEOUSLY reporting that the program was installed
                             # use the Uninstall-Package cmdlet to wipe it out. This scenario happens when PackageManagement/
@@ -1491,9 +1492,6 @@ function Install-Program {
                                 }
                                 if ($InstallProgramSplatParams.Keys -notcontains "UseChocolateyCmdLine") {
                                     $InstallProgramSplatParams.Add("UseChocolateyCmdLine",$True)
-                                }
-                                if ($InstallProgramSplatParams.Keys -notcontains "NoUpdatePackageManagement") {
-                                    $InstallProgramSplatParams.Add("NoUpdatePackageManagement",$True)
                                 }
                                 $PMInstall = $False
                                 Install-Program @InstallProgramSplatParams
@@ -1611,8 +1609,9 @@ function Install-Program {
     if ($AlreadyInstalled) {
         $InstallAction = "AlreadyInstalled"
     }
-    elseif ($PackageManagementCurrentInstalledPackage.Version -ne $PackageManagementLatestVersion.Version -or
-    $ChocolateyOutdatedProgramsPSObjects.ProgramName -contains $ProgramName
+    elseif ($($PackageManagementCurrentInstalledPackage.Version -ne $null -and
+    $PackageManagementCurrentInstalledPackage.Version -ne $PackageManagementLatestVersion.Version -and $PMInstall) -or
+    $($ChocolateyOutdatedProgramsPSObjects.ProgramName -contains $ProgramName)
     ) {
         $InstallAction = "Updated"
     }
@@ -3255,8 +3254,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU+rxOGZBXAQgyj1SuNKCg28YO
-# bbmgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU5GNcGtjMY1BPp9Kaa24QoIoN
+# EKmgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -3313,11 +3312,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFE3z7PtXpXfWSonu
-# PWrhQKPjvnUUMA0GCSqGSIb3DQEBAQUABIIBAA1p5B7HyJ3jVMzv7EOE77UE8KiC
-# 1SqJSdu8A+BuYPeoaSmIoteYa/tjz73R8hmqq0yZefaPHvyGCjK6GVdQOsYFx9fl
-# aHdBGxcuLbUGOK0AWVYsQ+OtB7ktKiNxbGP273tijgGji133PnkXE3+haspHiDrt
-# 4wWj568fLZbO8o9FQJ8qEJM1y4zRyu1XaVnzT+uPoerbx2Ox+lH12N2NVU4aLoio
-# 0nv199kbukuQGlGIfRLTFt46oqyOnMw+NLAVpa3ch+hV/CaXXp/CqjKIkd0prfcf
-# z9J8lcCOjF2tq3OFiCqREj1vtMtIKP3/0js7GF9VfHJZYmQkDLFeZCyvRLY=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFO3WZv/Vah5c+eY4
+# ilLWoDe55m5yMA0GCSqGSIb3DQEBAQUABIIBADTkmi2RZGN4e6Sxw5skkMufASJs
+# 9Q2v5fPREmv8IiSR2H9b55hFRJ120THEplxTNAQRac6FBaZhpEOZCbHStpVgb1+F
+# bP2mZWEbanVFXWWP3JwTS9BKLXO7r7IYXkCfJVVNOl7k7VEk/foZ1UTyJ5eU/qhM
+# iphtGDxsYU/hWr+2KAUX6eJy7YNtF+FbAA91eHFJvWpBAZhv1mBCki0kLGqFkpmO
+# GOUq1StgXfjG2DqBhpaQLMhmwOQViL/ap7SRvzBgUBVvEVwXPLxloOkzhXAcPSrM
+# nYfdRf636TmcWEVUvgfeYXv+SsPFvfIdv054ix/ZbETbRS2U1Z1vAz3FgMM=
 # SIG # End signature block

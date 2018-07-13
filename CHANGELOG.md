@@ -1,5 +1,9 @@
 # Change log
 
+## 0.9.6 (July 13, 2018)
+
+- Fixed logic to determine if installation is an Update or Fresh Install
+
 ## 0.9.5 (July 13, 2018)
 
 - Suppressed multiple 7zip outputs
