@@ -68,6 +68,7 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
         $Commands -contains 'Get-InstalledProgramsFromRegistry' | Should Be $True
         $Commands -contains 'Install-ChocolateyCmdLine' | Should Be $True
         $Commands -contains 'Install-Program' | Should Be $True
+        $Commands -contains 'New-Runspace' | Should Be $True
         $Commands -contains 'Uninstall-Program' | Should Be $True
         $Commands -contains 'Update-ChocolateyEnv' | Should Be $True
         $Commands -contains 'Update-PackageManagement' | Should Be $True
@@ -90,8 +91,8 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUREfYQYN6XEYaPl+zbu4uK/NV
-# pDOgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUcFqaFMRY6+ZvaStyNBYMMOh0
+# TzGgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -148,11 +149,11 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFMXLYFiXb4wNIiba
-# J87ILvQoTXs0MA0GCSqGSIb3DQEBAQUABIIBAHeHb+nSoI6bYw0K1DwCyi38tuQM
-# 97Lz5bOHxdY4HpE79Uh9P3EZdafb5AraBCziD27DfM6mRNfgLdgkQRXERXrQcgOp
-# lFOMET/RdWc8knjxRe4oN13GsWBbY77quMy3qhAmhqryBkM26nQUDzAQ0l3s07Pl
-# RVtUzP6yG8CXgpuB9l06kccY85bsfIS4+wOa94AfoNWrQW5QRPvFbdDP9FutanEG
-# wbqTOfKLaZrqHXfb2KEVM1s9/V4crvCZEkf0GjStMfzh1Z/g5iRUCrp2QPY54ssC
-# bxyhl5rfhM4ijA1/+1+9hPS9AwIrXg/93zELIY7HN1aj4XJPvt06I3eU40s=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFK+nxHxr/IE1XmIz
+# y1lQKFiMb1aRMA0GCSqGSIb3DQEBAQUABIIBALNrmLlec1+B0kHtqIeQMGjPqCOU
+# vqOM6hcu9AG0zChXL6k9hjywGyPOtSzpsghH9GA4gWy+SINQTreJojucWGQxEzsD
+# elPEpfuomQ+VvbJ9K/oN6VbAS/mq2PnGaxr791QW7dWoQMAV+4DekjBk9hv6CSae
+# ugWOvxPJAr24V/OiRyxbpZAwvjH4FjwSmQILlPiOE4FT3rhtmKTekuufwHI+R4Gq
+# yDR4KC4mKL7rkLAhHO0n/3o7tGm/N6/EpLStpHDGHsqn9ekJdQjIq3C36RiDm+2P
+# qBiOZmYgYmSiknBilx80xJ1Wi341neYtbeydhvLPKQMH2jAfmRAzYSRBTtI=
 # SIG # End signature block

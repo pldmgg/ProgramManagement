@@ -1,5 +1,9 @@
 # Change log
 
+## 0.9.5 (July 13, 2018)
+
+- Suppressed multiple 7zip outputs
+
 ## 0.9.4 (July 10, 2018)
 
 - Additional updates to psake

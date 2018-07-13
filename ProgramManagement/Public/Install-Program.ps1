@@ -808,8 +808,15 @@ function Install-Program {
                             }                            
                             
                             # Run the install script
+                            # Need to change default 7z execution behavior in order to suppress 7z output
                             $tempfile = [IO.Path]::Combine([IO.Path]::GetTempPath(), [IO.Path]::GetRandomFileName())
-                            $null = & $ChocolateyInstallScript *>&1 | Out-File $tempfile
+                            $ChocoScriptContent = Get-Content $ChocolateyInstallScript
+                            $LineToReplace = $ChocoScriptContent -match "-nonewwindow -wait"
+                            $UpdatedLine = $LineToReplace + "-RedirectStandardOutput `"$tempfile`""
+                            $UpdatedChocoScriptContent = $ChocoScriptContent -replace [regex]::Escape($LineToReplace),$UpdatedLine
+                            Set-Content -Path $ChocolateyInstallScript -Value $UpdatedChocoScriptContent
+                            $null = & $ChocolateyInstallScript *>$tempfile
+                            #$null = Start-Process powershell -ArgumentList "& `"$ChocolateyInstallScript`"" -NoNewWindow -Wait -RedirectStandardOutput $tempfile
                             if (Test-Path $tempfile) {Remove-Item $tempfile -Force}
 
                             # Now that the $ChocolateyInstallScript ran, search for the main executable again
@@ -1017,8 +1024,8 @@ function Install-Program {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUga5Bo6SzMkqR+t4SDRJ1nec6
-# xDugggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUMEFtXq7IDt5F/0cF6Eksn/1r
+# bOmgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -1075,11 +1082,11 @@ function Install-Program {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFHHDFjYvTN+en4Ad
-# Nz8S4aAUxclSMA0GCSqGSIb3DQEBAQUABIIBAFL9tXdi7qT99Suf/i7botDqDaDc
-# hb9LKBx6stkzqiATvazhm3nZBSU+Cear5mn2eBLyevFLi/vwjv9aeZ1EGB6F9aQh
-# LeM7t0ZC8BS8G3xJvwXHeA+ZezhalXlIfwu9Pv0WOVPcBoG2n5o2r+2cKxqEIbGL
-# hBBGzu5mCobERhinfyh7AyRIfZXAIiEKxdySEdaTEFyXOskfuM5P98+qNj8AGx0j
-# 6sJQNUA33iCf8GGi6OAaFW3QVIm98Mxhcm0fq5MoZ415EO4TAsjKaxgmlY/9/ObI
-# 1CRrW0MRqteGM9AiohJ7mkuFIIdMfClQFcV+qeQNtaQAx8PBzlpH2euVNKY=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFDPey3nRv3+YFmip
+# LuFvLjfIr+YcMA0GCSqGSIb3DQEBAQUABIIBAJ8s6fkaYYbLoEpdyLsH9+emEYeM
+# zFfy6Jdo3LK0/GHW6xT4pNmbFrbU9P1sk6ZYLI9/GKbUYY0iQr0YbY1iQ6r+5a8O
+# V7Vkak9/Yo44QFhPGujL7JpwxKNev2v3C+Ho3f7GZc4zm+yZPt5UKEUT2hO5gcP9
+# 6aZV1qPJwrnYJ+BB12GUCUszTfSE0kRP89iAwYh8EXo2sLWdqszk1DMflRCiP8bc
+# EMeVEO6CCcjrW9SVBxWL4KrJdj2IXxBtMZ42vmG6FGymAZEhjqCpxJLZsptuMXIM
+# N8x1ZvTIjkxJkDxD1ksI5XKmUmVmeOlKgYK8AenZ7NSkpzoxz/HXe/zGpDo=
 # SIG # End signature block
