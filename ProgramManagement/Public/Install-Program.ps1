@@ -869,7 +869,8 @@ function Install-Program {
                                     $InstallProgramSplatParams.Add("UseChocolateyCmdLine",$True)
                                 }
                                 $PMInstall = $False
-                                Install-Program @InstallProgramSplatParams
+                                #Install-Program @InstallProgramSplatParams
+                                New-Runspace -RunspaceName "InstProgChocoCmd" -ScriptBlock {Install-Program @InstallProgramSplatParams}
                                 
                                 return
                             }
@@ -1024,8 +1025,8 @@ function Install-Program {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUSEEMXU3Gb0MyeVf1TEc63Sd8
-# 9FGgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUqvOWNUenzcW7WLD3hHZ3INr1
+# B6+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -1082,11 +1083,11 @@ function Install-Program {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFILrRUrJ3B8qUYc9
-# 0ZSkv8XksaHkMA0GCSqGSIb3DQEBAQUABIIBAMTZL50WNYFKql+iHxBcLntDPeYg
-# Lynt0Be4nwv7ze/ep1Charj+a+q3sToX8S/E/mEjDti77WLpLGUi/I/xZrJPEqum
-# lYTljrs2hO8PnZenGxBBO8wdQ7RX4u0zz9T/E64H4NJZVnSYWtI4Xy/F8ySgEeqm
-# X+dqp8M2e2vQMOHmuEvlHA/uIlvr0ojVeE0ZtB9lPYZ+6hA/nVLRSn88pQukvxVO
-# 7Qq940E+iRHzCJ+iy09me0Lc0qXnnVDumWUtb+d4bTD/umDfQYuj+RRH6s9G8/HF
-# H0QFL8FJ/OT/A1ih7Jgur94d85RABvPytL2TxRoaVau27F2EJLJiHxxriWY=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFN7DvwnFQX+wLhuT
+# NZkLl+UvDjUoMA0GCSqGSIb3DQEBAQUABIIBAHz0h0LTlojUaIQy+kMaLZo2SKWq
+# VEtw2IdEWG7DjeGutsyii079DO92qvtDXJpKwmgYem0McZmncd0GB7MMeGkmfkPM
+# 9sCmBg+OaU/fdksaRDC+/1DQcZaZ17EfpqLwg/nKMY7F6X0CLARVFpLCx8lR9VFc
+# loEM16STTY4XbmvcUSFH8FBzyyEC5sHJ1UjlO7q96MaRt9ca0Rq7vbH6SUgfRJ1d
+# uIopAWDtw1SbYGyA8vpJWfr/vNljlI9b4rcMrZaNQa9ba2lquZs6D8SwANO5n4le
+# XnM9Muubr0DOLIZxzurajHdjuOTI6kva63IFOGGvueG1Mltc4ru0C4hwP1A=
 # SIG # End signature block

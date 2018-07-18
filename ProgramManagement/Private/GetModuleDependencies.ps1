@@ -83,6 +83,8 @@ function GetModuleDependencies {
     }
     $ModInfoFromGetCommand = Get-Command -CommandType Cmdlet,Function,Workflow
 
+    $CurrentlyLoadedModuleNames = $(Get-Module).Name
+
     [System.Collections.ArrayList]$AutoFunctionsInfo = @()
 
     foreach ($ModInfoObj in $ModInfoFromManifests) {
@@ -92,7 +94,22 @@ function GetModuleDependencies {
                 ManifestFileItem    = $ModInfoObj.ManifestFileItem
                 ExportedCommands    = $ModInfoObj.ExportedCommands
             }
-            $null = $AutoFunctionsInfo.Add($PSObj)
+            
+            if ($NameOfLoadedFunction) {
+                if ($PSObj.ModuleName -ne $NameOfLoadedFunction -and
+                $CurrentlyLoadedModuleNames -notcontains $PSObj.ModuleName
+                ) {
+                    $null = $AutoFunctionsInfo.Add($PSObj)
+                }
+            }
+            if ($PathToScriptFile) {
+                $ScriptFileItem = Get-Item $PathToScriptFile
+                if ($PSObj.ModuleName -ne $ScriptFileItem.BaseName -and
+                $CurrentlyLoadedModuleNames -notcontains $PSObj.ModuleName
+                ) {
+                    $null = $AutoFunctionsInfo.Add($PSObj)
+                }
+            }
         }
     }
     foreach ($ModInfoObj in $ModInfoFromGetCommand) {
@@ -100,10 +117,28 @@ function GetModuleDependencies {
             ModuleName          = $ModInfoObj.ModuleName
             ExportedCommands    = $ModInfoObj.Name
         }
-        $null = $AutoFunctionsInfo.Add($PSObj)
+
+        if ($NameOfLoadedFunction) {
+            if ($PSObj.ModuleName -ne $NameOfLoadedFunction -and
+            $CurrentlyLoadedModuleNames -notcontains $PSObj.ModuleName
+            ) {
+                $null = $AutoFunctionsInfo.Add($PSObj)
+            }
+        }
+        if ($PathToScriptFile) {
+            $ScriptFileItem = Get-Item $PathToScriptFile
+            if ($PSObj.ModuleName -ne $ScriptFileItem.BaseName -and
+            $CurrentlyLoadedModuleNames -notcontains $PSObj.ModuleName
+            ) {
+                $null = $AutoFunctionsInfo.Add($PSObj)
+            }
+        }
     }
     
-    $AutoFunctionsInfo = $AutoFunctionsInfo| Where-Object {![string]::IsNullOrWhiteSpace($_) -and $_.ManifestFileItem -ne $null}
+    $AutoFunctionsInfo = $AutoFunctionsInfo | Where-Object {
+        ![string]::IsNullOrWhiteSpace($_) -and
+        $_.ManifestFileItem -ne $null
+    }
 
     $FunctionRegex = "([a-zA-Z]|[0-9])+-([a-zA-Z]|[0-9])+"
     $LinesWithFunctions = $($FunctionOrScriptContent -split "`n") -match $FunctionRegex | Where-Object {![bool]$($_ -match "[\s]+#")}
@@ -175,8 +210,8 @@ function GetModuleDependencies {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUQpDbFVHRp+kdreYrrtOUtOUk
-# hjGgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUMiM107jw9Y/cfs9lQqnHygts
+# X96gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -233,11 +268,11 @@ function GetModuleDependencies {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFLN15YKcRfkavp0u
-# jPWoe3+UxGPPMA0GCSqGSIb3DQEBAQUABIIBAEyOv9kI3ZFWWQBydIL808OLYi4l
-# 768T2paT1j461SeITu2N6SK11Qogt0QyK1N3QIegzMo8kNBgvmD2nzlflOMB9f8w
-# /x1Y1nz088oQR5LTamMojHtakl3o+wz69vC3apJlCeKfrWjNJu0XVKAq7yBlnXvX
-# mJCpsEx0aG890SsNZBwwJ37GbXyI2iF2je5KBHQz+Q6QDqZYB7aV+cFilkG4WqTl
-# Cfp1Plxsca+PnYmrBm2tcUl76sfFhlOL4ewI5hDbuIhyTWDRQUxZ31iInrh5CHOp
-# LTFcRhKxfTGiiI+h5nURqk56f0fw8hJIDghiqZV2YaCAEqEzs98SyjI/Zgw=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFBQ6x1Z9XWQOVjS2
+# k2y0qY9OCPHiMA0GCSqGSIb3DQEBAQUABIIBAHBe20JyaU1XkPP0GGebk6xKR1qK
+# slfac6S8TankWLJ8RhDhiLMKLvFgL6BgFYX6CQl2/Dqqe5dsrtKfAGvGmOH/fD0z
+# 1OczwSJ9weq6RIyPHwfzYYOwj8cqiTIU19Ai3XHfxfKcDl0JExi17iCYNpV/JI9c
+# Ia2vzqRCxWu7jYTlsvdZoyt5NPj7RVdrIljMqUh5pOHyrZhqVE9SPpohoVppoF5L
+# RtOTh0e8i/J5G72Z5YTL3pOF+WKqahW+Tv6LxTBGTLvLhGUKYX32nU/vX2qTdoBP
+# uN4amgJyqRKYDFdOG/TYAmU6MoXHO0QORAysy7WvbIVqj7PA7eje6BbaPcA=
 # SIG # End signature block

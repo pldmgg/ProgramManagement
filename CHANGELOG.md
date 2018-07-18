@@ -1,5 +1,9 @@
 # Change log
 
+## 0.9.7 (July 18, 2018)
+
+- Updated GetModuleDependencies Private function to help Module load faster in PSCore
+
 ## 0.9.6 (July 13, 2018)
 
 - Fixed logic to determine if installation is an Update or Fresh Install
