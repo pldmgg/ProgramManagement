@@ -1,5 +1,9 @@
 # Change log
 
+## 1.0.1 (July 23, 2018)
+
+- Updated InvokePSCompatibility Private to improve import speed in PSCore
+
 ## 1.0.0 (July 23, 2018)
 
 - Added an error condition for situations where the Install-Package cmdlet (for PowerShellGet) does literally nothing

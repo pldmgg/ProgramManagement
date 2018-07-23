@@ -54,6 +54,7 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
         $Module = Get-Module $env:BHProjectName
         $Module.Name -eq $env:BHProjectName | Should Be $True
         $Commands = $Module.ExportedCommands.Keys
+        $Commands -contains 'AddWinRMTrustLocalHost' | Should Be $False
         $Commands -contains 'AddLastWriteTimeToRegKeys' | Should Be $False
         $Commands -contains 'GetElevation' | Should Be $False
         $Commands -contains 'GetModuleDependencies' | Should Be $False
@@ -76,6 +77,7 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
 
     It "Module '$env:BHProjectName' Private Functions Are Available in Internal Scope" {
         $Module = Get-Module $env:BHProjectName
+        [bool]$Module.Invoke({Get-Item function:AddWinRMTrustLocalHost}) | Should Be $True
         [bool]$Module.Invoke({Get-Item function:AddLastWriteTimeToRegKeys}) | Should Be $True
         [bool]$Module.Invoke({Get-Item function:GetElevation}) | Should Be $True
         [bool]$Module.Invoke({Get-Item function:GetModuleDependencies}) | Should Be $True
@@ -91,8 +93,8 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUcFqaFMRY6+ZvaStyNBYMMOh0
-# TzGgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUBQrTeN0QQrLXWzviRIsNdusU
+# 8+mgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -149,11 +151,11 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFK+nxHxr/IE1XmIz
-# y1lQKFiMb1aRMA0GCSqGSIb3DQEBAQUABIIBALNrmLlec1+B0kHtqIeQMGjPqCOU
-# vqOM6hcu9AG0zChXL6k9hjywGyPOtSzpsghH9GA4gWy+SINQTreJojucWGQxEzsD
-# elPEpfuomQ+VvbJ9K/oN6VbAS/mq2PnGaxr791QW7dWoQMAV+4DekjBk9hv6CSae
-# ugWOvxPJAr24V/OiRyxbpZAwvjH4FjwSmQILlPiOE4FT3rhtmKTekuufwHI+R4Gq
-# yDR4KC4mKL7rkLAhHO0n/3o7tGm/N6/EpLStpHDGHsqn9ekJdQjIq3C36RiDm+2P
-# qBiOZmYgYmSiknBilx80xJ1Wi341neYtbeydhvLPKQMH2jAfmRAzYSRBTtI=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFPdBelJMvMYdyEYU
+# wIF/LjW0LOZmMA0GCSqGSIb3DQEBAQUABIIBAAWyWcefziWE4qll34MAO1mQh+rh
+# 8wlPDZcRhTxtsL4x015ImuFhFde5j7xo6ISy6xbm7OCdZfiG/N9ZFi8Fa4pfIXI1
+# cnM9Tg28xyiuYvdYc37VEoirYdv48K/XbuK0fpjYeb3t1N5cXJvz6kJVRmLruDaP
+# pVe7J35CfRyHaO8vDNSPn8GxVcLF7rc/+FxSRZQoo93ryfsEBY8P4fHkrTQDxiLJ
+# xsNxks8QGjqJnIB72T/22jXfNSfktSKXNv8QsPAGaOcOGeG37YUTDKiKc/R8ouKm
+# xk6sGoX94wUJFEJx9Ch56gofErlECQzhJ6Bxao1h/IkyEID2dTA5ylkJcZw=
 # SIG # End signature block

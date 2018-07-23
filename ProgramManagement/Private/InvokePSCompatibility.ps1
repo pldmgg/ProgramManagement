@@ -21,6 +21,8 @@ function InvokePSCompatibility {
         return
     }
 
+    AddWinRMTrustLocalHost
+
     if (!$InvocationMethod) {
         $MyInvParentScope = Get-Variable "MyInvocation" -Scope 1 -ValueOnly
         $PathToFile = $MyInvParentScope.MyCommand.Source
@@ -234,9 +236,9 @@ function InvokePSCompatibility {
             }
         }
 
-        if ($ModulesNotFoundLocally.Count -ne $ModulesSuccessfullyInstalled -and !$InstallModulesNotAvailableLocally) {
+        if ($ModulesNotFoundLocally.Count -ne $ModulesSuccessfullyInstalled.Count -and !$InstallModulesNotAvailableLocally) {
             $ErrMsg = "The following Modules were not found locally, and they will NOT be installed " +
-            "because the -InstallModulesNotAvailableLocally switch was not used:`n$($ModulesNotFOundLocally -join "`n")"
+            "because the -InstallModulesNotAvailableLocally switch was not used:`n$($ModulesNotFoundLocally -join "`n")"
             Write-Error $ErrMsg
             Write-Warning "No Modules have been Imported or Installed!"
             $global:FunctionResult = "1"
@@ -264,24 +266,7 @@ function InvokePSCompatibility {
             $_.ModuleName -eq $ModObj.ModuleName
         }
 
-        $AllVersionsPrep = $MatchingModObjs.ManifestFileItem.FullName | Split-Path -Parent
-        
-        $AllVersions = foreach ($PotentialVersionPath in $AllVersionsPrep) {
-            $PotentialVersionString = $PotentialVersionPath | Split-Path -Leaf
-
-            $VersionCheck = [bool]$(
-                try{
-                    [version]$PotentialVersionString
-                }
-                catch{
-                    Write-Verbose "'$PotentialVersionString' is not a version number..."
-                }
-            )
-
-            if ($VersionCheck) {
-                $PotentialVersionString
-            }
-        }
+        $AllVersions = $MatchingModObjs.ManifestFileItem.FullName | foreach {$(Import-PowerShellDataFile $_).ModuleVersion} | foreach {[version]$_}
 
         if ($AllVersions.Count -gt 1) {
             $VersionsSorted = $AllVersions | Sort-Object | Get-Unique
@@ -290,8 +275,8 @@ function InvokePSCompatibility {
             $VersionsToRemove = $VersionsSorted[0..$($VersionsSorted.Count-2)]
 
             foreach ($Version in $($VersionsToRemove | foreach {$_.ToString()})) {
-                [array]$ModObjsToRemove = $RequiredLocallyAvailableModulesScan.PSCoreModuleDependencies | Where-Object {
-                    $_.ManifestFileItem.FullName -match "\\$Version\\" -and $_.ModuleName -eq $ModObj.ModuleName
+                [array]$ModObjsToRemove = $MatchingModObjs | Where-Object {
+                    $(Import-PowerShellDataFile $_.ManifestFileItem.FullName).ModuleVersion -eq $Version -and $_.ModuleName -eq $ModObj.ModuleName
                 }
 
                 foreach ($obj in $ModObjsToRemove) {
@@ -307,24 +292,7 @@ function InvokePSCompatibility {
             $_.ModuleName -eq $ModObj.ModuleName
         }
 
-        $AllVersionsPrep = $MatchingModObjs.ManifestFileItem.FullName | Split-Path -Parent
-        
-        $AllVersions = foreach ($PotentialVersionPath in $AllVersionsPrep) {
-            $PotentialVersionString = $PotentialVersionPath | Split-Path -Leaf
-
-            $VersionCheck = [bool]$(
-                try{
-                    [version]$PotentialVersionString
-                }
-                catch{
-                    Write-Verbose "'$PotentialVersionString' is not a version number..."
-                }
-            )
-
-            if ($VersionCheck) {
-                $PotentialVersionString
-            }
-        }
+        $AllVersions = $MatchingModObjs.ManifestFileItem.FullName | foreach {$(Import-PowerShellDataFile $_).ModuleVersion} | foreach {[version]$_}
 
         if ($AllVersions.Count -gt 1) {
             $VersionsSorted = $AllVersions | Sort-Object | Get-Unique
@@ -333,8 +301,8 @@ function InvokePSCompatibility {
             $VersionsToRemove = $VersionsSorted[0..$($VersionsSorted.Count-2)]
 
             foreach ($Version in $($VersionsToRemove | foreach {$_.ToString()})) {
-                [array]$ModObjsToRemove = $RequiredLocallyAvailableModulesScan.WinPSModuleDependencies | Where-Object {
-                    $_.ManifestFileItem.FullName -match "\\$Version\\" -and $_.ModuleName -eq $ModObj.ModuleName
+                [array]$ModObjsToRemove = $MatchingModObjs | Where-Object {
+                    $(Import-PowerShellDataFile $_.ManifestFileItem.FullName).ModuleVersion -eq $Version -and $_.ModuleName -eq $ModObj.ModuleName
                 }
 
                 foreach ($obj in $ModObjsToRemove) {
@@ -346,6 +314,7 @@ function InvokePSCompatibility {
 
     #endregion >> Prep
 
+    $RequiredLocallyAvailableModulesScan
 
     #region >> Main
 
@@ -355,8 +324,9 @@ function InvokePSCompatibility {
     [System.Collections.ArrayList]$SuccessfulModuleImports = @()
     [System.Collections.ArrayList]$FailedModuleImports = @()
     foreach ($ModObj in $RequiredLocallyAvailableModulesScan.PSCoreModuleDependencies) {
+        Write-Verbose "Attempting import of $($ModObj.ModuleName)..."
         try {
-            Import-Module $ModObj.ModuleName -Scope Global -NoClobber -Force -ErrorAction Stop
+            Import-Module $ModObj.ModuleName -Scope Global -NoClobber -Force -ErrorAction Stop -WarningAction SilentlyContinue
 
             $ModuleInfo = [pscustomobject]@{
                 ModulePSCompatibility   = "PSCore"
@@ -373,7 +343,7 @@ function InvokePSCompatibility {
             Write-Verbose "Problem importing module '$($ModObj.ModuleName)'...trying via Manifest File..."
 
             try {
-                Import-Module $ModObj.ManifestFileItem.FullName -Scope Global -NoClobber -Force -ErrorAction Stop
+                Import-Module $ModObj.ManifestFileItem.FullName -Scope Global -NoClobber -Force -ErrorAction Stop -WarningAction SilentlyContinue
 
                 $ModuleInfo = [pscustomobject]@{
                     ModulePSCompatibility   = "PSCore"
@@ -419,7 +389,7 @@ function InvokePSCompatibility {
             }
             
             Invoke-WinCommand -ComputerName localhost -ScriptBlock {
-                Import-Module $args[0] -Scope Global -NoClobber -Force
+                Import-Module $args[0] -Scope Global -NoClobber -Force -WarningAction SilentlyContinue
             } -ArgumentList $ModObj.ModuleName -ErrorAction Stop
 
             $ModuleInfo = [pscustomobject]@{
@@ -466,7 +436,7 @@ function InvokePSCompatibility {
                 }
                 
                 Invoke-WinCommand -ComputerName localhost -ScriptBlock {
-                    Import-Module $args[0] -Scope Global -NoClobber -Force
+                    Import-Module $args[0] -Scope Global -NoClobber -Force -WarningAction SilentlyContinue
                 } -ArgumentList $ModObj.ManifestFileItem.FullName -ErrorAction Stop
 
                 $ModuleInfo = [pscustomobject]@{
@@ -630,8 +600,8 @@ function InvokePSCompatibility {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU/KPjbgVoEi9R+q8MUI5jXky1
-# Q9Kgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUxp3CW+2xwtyeeZo3EcfyiR8t
+# q/+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -688,11 +658,11 @@ function InvokePSCompatibility {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFK9FrcFWJGGzqvm5
-# tw1A8wA2fRacMA0GCSqGSIb3DQEBAQUABIIBAHr6wvlQF4RiRqY3fnSDcshhu6Fv
-# 4BDSZz2enT0DRrIxidznJMIHBNDdo99GpeTyjzmXEz47AfY+qXlguHkAxgcRhDNf
-# 55Hgr6QBg3bgGPhzIbNrsobEqedqVfu4qRdB41/pez1QHdVMcSDH8MZTHWeBhmWM
-# FwGXuaot6fl6VUYb4sp8oqbPGDmtxchcyOcRLbN0RvnFZ+GN0FiakOVBaeTR2Mrm
-# qB8kr8tqoi1tIvfE6VM9khGOkJDgKrYjWVqyBF30Oc05CLfWoqZpsrfCVXjTN9kC
-# sVRySkG8TpIarjXAmlvBRUbwmSjQERUqGh8GYww8Map9pLCl/kSgrLAqVNg=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFBmVOCq5pvvyrQbs
+# STAssMQZKukyMA0GCSqGSIb3DQEBAQUABIIBAGgLCHj3I+BZNBMUAonY1ztINrvk
+# ZYFLnbBb+NNdzRMbdt8cyFjcri7Op9dY8WQETe+ulepDR5loyDA7pX0RCWEkcwUg
+# IbTOF2qdMs3Lwv3x6X5SbH93f1fxyl/eLqzx0aMFj/8pTJs59DHmdCu6AwH1pOQy
+# itbIGEVNDBUHnABHx8gQSYKqorO3sj8QKPq3c/6wBMH3eRROD5rZ3G3ybJFF8InC
+# UCmoyOATvBERECeY8DiaNZlwsOR0ZdP+VgacxigMWxs4+9BkivR58lKV5fKG6QYk
+# R7E81uKlk5I1wNE3/7+WWIMuJgeC9noj4h+CCBSdSCpUVQT20Z1Uz+yynlc=
 # SIG # End signature block

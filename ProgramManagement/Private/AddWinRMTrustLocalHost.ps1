@@ -1,29 +1,65 @@
-[System.Collections.ArrayList]$script:FunctionsForSBUse = @(
-    ${Function:AddWinRMTrustLocalHost}.Ast.Extent.Text 
-    ${Function:AddLastWriteTimeToRegKey}.Ast.Extent.Text 
-    ${Function:GetElevation}.Ast.Extent.Text
-    ${Function:GetModuleDependencies}.Ast.Extent.Text
-    ${Function:GetMSIFileInfo}.Ast.Extent.Text
-    ${Function:GetNativePath}.Ast.Extent.Text
-    ${Function:InvokeModuleDependencies}.Ast.Extent.Text
-    ${Function:InvokePSCompatibility}.Ast.Extent.Text
-    ${Function:PauseForWarning}.Ast.Extent.Text
-    ${Function:UnzipFile}.Ast.Extent.Text
-    ${Function:Get-AllPackageInfo}.Ast.Extent.Text
-    ${Function:Get-InstalledProgramsFromRegistry}.Ast.Extent.Text
-    ${Function:Install-ChocolateyCmdLine}.Ast.Extent.Text
-    ${Function:Install-Program}.Ast.Extent.Text
-    ${Function:New-Runspace}.Ast.Extent.Text
-    ${Function:Uninstall-Program}.Ast.Extent.Text
-    ${Function:Update-ChocolateyEnv}.Ast.Extent.Text
-    ${Function:Update-PackageManagement}.Ast.Extent.Text
-)
+function AddWinRMTrustLocalHost {
+    [CmdletBinding()]
+    Param (
+        [Parameter(Mandatory=$False)]
+        [string]$NewRemoteHost = "localhost"
+    )
+
+    # Make sure WinRM in Enabled and Running on $env:ComputerName
+    try {
+        $null = Enable-PSRemoting -Force -ErrorAction Stop
+    }
+    catch {
+        if ($PSVersionTable.PSEdition -eq "Core") {
+            Import-WinModule NetConnection
+        }
+
+        $NICsWPublicProfile = @(Get-NetConnectionProfile | Where-Object {$_.NetworkCategory -eq 0})
+        if ($NICsWPublicProfile.Count -gt 0) {
+            foreach ($Nic in $NICsWPublicProfile) {
+                Set-NetConnectionProfile -InterfaceIndex $Nic.InterfaceIndex -NetworkCategory 'Private'
+            }
+        }
+
+        try {
+            $null = Enable-PSRemoting -Force
+        }
+        catch {
+            Write-Error $_
+            Write-Error "Problem with Enable-PSRemoting WinRM Quick Config! Halting!"
+            $global:FunctionResult = "1"
+            return
+        }
+    }
+
+    # If $env:ComputerName is not part of a Domain, we need to add this registry entry to make sure WinRM works as expected
+    if (!$(Get-CimInstance Win32_Computersystem).PartOfDomain) {
+        $null = reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System /v LocalAccountTokenFilterPolicy /t REG_DWORD /d 1 /f
+    }
+
+    # Add the New Server's IP Addresses to $env:ComputerName's TrustedHosts
+    $CurrentTrustedHosts = $(Get-Item WSMan:\localhost\Client\TrustedHosts).Value
+    [System.Collections.ArrayList][array]$CurrentTrustedHostsAsArray = $CurrentTrustedHosts -split ','
+
+    $HostsToAddToWSMANTrustedHosts = @($NewRemoteHost)
+    foreach ($HostItem in $HostsToAddToWSMANTrustedHosts) {
+        if ($CurrentTrustedHostsAsArray -notcontains $HostItem) {
+            $null = $CurrentTrustedHostsAsArray.Add($HostItem)
+        }
+        else {
+            Write-Warning "Current WinRM Trusted Hosts Config already includes $HostItem"
+            return
+        }
+    }
+    $UpdatedTrustedHostsString = $($CurrentTrustedHostsAsArray | Where-Object {![string]::IsNullOrWhiteSpace($_)}) -join ','
+    Set-Item WSMan:\localhost\Client\TrustedHosts $UpdatedTrustedHostsString -Force
+}
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU5WxEEFrmbegOHoLnjGGupkyu
-# viSgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUgJPfoQv6PBa8VE2dwjhQaovv
+# x+igggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -80,11 +116,11 @@
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFEylIYqVO3Lu7DG+
-# PWxoJKkwjAoSMA0GCSqGSIb3DQEBAQUABIIBADsO5uRBKsETqGEofttE8ec9z4KS
-# p2iv+Hvz9C7DMezOMIl/m+N4gXhkbs4BTriQbwfzMnnSLtXLG9VfxMxvsrDBbtRo
-# lhb/59pCvU7u2hCZ8bWGWWUdAr08aIjN4b0vRP36MasYVEpa8ZIPXfVo4N+b2+iK
-# t1zLNTcDtfYMdOwusX3QwfNGfLGCijK1vk+5WRZxq/KE4IokWmB240eweNigMpw+
-# pe+riKHd2/Y/qMyeUIiSNKEMmgVyvd603POM7Z8qnX9RFymL8po1joCLU3DZTL4R
-# LRlc1UFibm0drh3mGHpx58w4pl0w775rAJorrwKx5Qz+DSeFOp6W8R3C+8Q=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFEfbGSGMj6QfG5et
+# W/OsBh36F792MA0GCSqGSIb3DQEBAQUABIIBAAeQcNjvv34QidP/aJU/TfVS5QcA
+# 5pyXgqnsMzoJMiS/pFqbnJuXVzTzSJz7SO6h2QbpNbHm7bNDrLIU+ghKiqjFvEpx
+# Xq4BLDgzw3d219206JJP92YLF61iom7dAAJZ3J9qG4WhGkQaXUGZsmhpyNlH+vYt
+# 7dJ2PFz7X7QVc6k9FspKw+v5GHbFSaUCDfkEHoKQczspBCBlNRJWmWU/9fNsGLiA
+# Q+l1jB3IE7HMSXcbzvQFk13ttg9r3isy1CJK0HtH/qI5UdLzaJHp17rJL7hLA7k4
+# 0pHFkCIKA8EbC6Y3QradnjRSHRizmlZcs2PDSxEjYITDYFXH2tuUENJprHQ=
 # SIG # End signature block
