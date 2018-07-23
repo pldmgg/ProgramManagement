@@ -1171,8 +1171,10 @@ function Install-Program {
             }
             # NOTE: The PackageManagement install of $ProgramName is unreliable, so just in case, fallback to the Chocolatey cmdline for install
             $null = Install-Package @InstallPackageSplatParams
-            if ($InstallError.Count -gt 0) {
-                $null = Uninstall-Package $ProgramName -Force -ErrorAction SilentlyContinue
+            if ($InstallError.Count -gt 0 -or $($(Get-Package).Name -match $ProgramName).Count -eq 0) {
+                if ($($(Get-Package).Name -match $ProgramName).Count -gt 0) {
+                    $null = Uninstall-Package $ProgramName -Force -ErrorAction SilentlyContinue
+                }
                 Write-Warning "There was a problem installing $ProgramName via PackageManagement/PowerShellGet!"
                 
                 if ($UsePowerShellGet) {
@@ -1240,6 +1242,13 @@ function Install-Program {
                 }
             }
 
+            # Make sure you can reach the Chocolatey Repo
+            if ($(Invoke-WebRequest -Uri 'http://chocolatey.org/api/v2').StatusCode -ne 200) {
+                Write-Error "Unable to reach the Chocolatey Package Repo at 'http://chocolatey.org/api/v2'! Halting!"
+                $global:FunctionResult = "1"
+                return
+            }
+
             try {
                 # TODO: Figure out how to handle errors from choco.exe. Some we can ignore, others
                 # we shouldn't. But I'm not sure what all of the possibilities are so I can't
@@ -1273,6 +1282,32 @@ function Install-Program {
                 $stdout = $Process.StandardOutput.ReadToEnd()
                 $stderr = $Process.StandardError.ReadToEnd()
                 $AllOutput = $stdout + $stderr
+                
+                if (![bool]$($(clist --local-only $ProgramName) -match $ProgramName)) {
+                    if ($AllOutput -match "prerelease" -and $Arguments -notmatch '--pre') {
+                        $Arguments = $Arguments +  ' --pre'
+
+                        $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
+                        #$ProcessInfo.WorkingDirectory = $BinaryPath | Split-Path -Parent
+                        $ProcessInfo.FileName = $(Get-Command cup).Source
+                        $ProcessInfo.RedirectStandardError = $true
+                        $ProcessInfo.RedirectStandardOutput = $true
+                        $ProcessInfo.UseShellExecute = $false
+                        $ProcessInfo.Arguments = $Arguments
+                        $Process = New-Object System.Diagnostics.Process
+                        $Process.StartInfo = $ProcessInfo
+                        $Process.Start() | Out-Null
+                        # Below $FinishedInAlottedTime returns boolean true/false
+                        # Give it 60 seconds to finish installing, otherwise, kill choco.exe
+                        $FinishedInAlottedTime = $Process.WaitForExit(60000)
+                        if (!$FinishedInAlottedTime) {
+                            $Process.Kill()
+                        }
+                        $stdout = $Process.StandardOutput.ReadToEnd()
+                        $stderr = $Process.StandardError.ReadToEnd()
+                        $AllOutput = $stdout + $stderr
+                    }
+                }
                 
                 if (![bool]$($(clist --local-only $ProgramName) -match $ProgramName)) {
                     Write-Error "There was a problem installing the program '$ProgramName' via 'cup $Arguments'! Halting!"
@@ -3273,8 +3308,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUbstmc4++VwcSb+1UYBpY2b2H
-# Ojygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUHS1/BgoP2KnnJWj8kxUq34Sr
+# F0Ggggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -3331,11 +3366,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFBrcnw9bqCzZM/As
-# ZFeaY2rf3KPbMA0GCSqGSIb3DQEBAQUABIIBAKVoAeVpwUIF1HfTxR/UWgZNiYag
-# wWXl+/U3lsSmdm10lWipSNiSvJeUePHtIqXneG0w3yjT5szIvkVh8NUIWJFthR3n
-# iCnhQbFklxY23m/q0e4sr9m7gjnuHd0UlangMauNmdjJV5ffTmAck6Kk8PzvN+Jm
-# wGi/wb2zCcCc6bqmzrkMJxK96UvdXrmCszZNKUSLVCPtI1VmgK1SZ2AjQfvS7ILu
-# 3xv+w68RIvNb/bggF9hb2v9VjHqpl9GtT7Edxh/CpD3/IhK6Ac6EarXHMbNHawTn
-# Yo/apvg6SNanRWLlnj0xxHx0ehB0AU3QTy0OhliJAaEEegRPZhyi6EWXW7U=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFP/BX126lVU39neZ
+# QKLyoYlB4w0yMA0GCSqGSIb3DQEBAQUABIIBAI7udwbFWaTwa/FwxXIRcp/3k71M
+# vahsvlx9Lik/UNklOWkaBo/+5EXjsL4ScxEgS72QFjTAnQ2OMqQFuYge4xllRppb
+# ua0T16o6l3hBM4ukYiZCCau71pHLK/bCdblxPRGhvr4VX/K5dTKeMNJkgiVPsP+x
+# TLbTFfU3gkKWwsJoKNlcJYyeqTCqmVJRgb71GRRKN5+LHekrOg/wwd6Alisz8Tbd
+# NsWM+Xix8/HNBY28SfU53xezrWfOjrWQvH+SK0NjTo5iKKXHfbMii9cgxPny/hJh
+# TVpOHmnlvVH2J/w9Y4qITcwiowbVSFrd16E7NGSsiFqBu9zLyvxT1VCWngE=
 # SIG # End signature block

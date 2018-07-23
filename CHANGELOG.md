@@ -1,5 +1,9 @@
 # Change log
 
+## 1.0.0 (July 23, 2018)
+
+- Added an error condition for situations where the Install-Package cmdlet (for PowerShellGet) does literally nothing
+
 ## 0.9.9 (July 23, 2018)
 
 - Updated InvokeModuleDependencies and InvokePSCompatibility Private functions to ensure Module Dependencies are installed even when function names overlap
