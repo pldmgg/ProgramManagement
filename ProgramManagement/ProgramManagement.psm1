@@ -841,7 +841,7 @@ function Install-Program {
         )
 
         # ...search for it in the $ExpectedInstallLocation if that parameter is provided by the user...
-        if ($ExpectedInstallLocation) {
+        if ($ExpectedInstallLocation -and $(Test-Path $ExpectedInstallLocation)) {
             [System.Collections.ArrayList][Array]$ExePath = $(Get-ChildItem -Path $ExpectedInstallLocation -File -Recurse -Filter "*$FinalCommandName.exe").FullName
         }
         # If we don't have $ExpectedInstallLocation provided...
@@ -1288,6 +1288,7 @@ function Install-Program {
             }
             catch {
                 Write-Error "There was a problem installing $ProgramName using the Chocolatey cmdline! Halting!"
+                Write-Warning "Please update Chocolatey via:`n    cup chocolatey -y"
                 $global:FunctionResult = "1"
                 return
             }
@@ -1324,7 +1325,7 @@ function Install-Program {
             if (![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue) -and $(!$ExePath -or $ExePath.Count -eq 0)) {
                 $env:Path = Update-ChocolateyEnv -ErrorAction SilentlyContinue
                 
-                if ($ExpectedInstallLocation) {
+                if ($ExpectedInstallLocation -and $(Test-Path $ExpectedInstallLocation)) {
                     [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName -ExpectedInstallLocation $ExpectedInstallLocation
                 }
                 else {
@@ -1449,7 +1450,7 @@ function Install-Program {
                             Synchronize-SystemPathEnvPath
                             $env:Path = Update-ChocolateyEnv -ErrorAction SilentlyContinue
 
-                            if ($ExpectedInstallLocation) {
+                            if ($ExpectedInstallLocation -and $(Test-Path $ExpectedInstallLocation)) {
                                 [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName -ExpectedInstallLocation $ExpectedInstallLocation
                             }
                             else {
@@ -1496,6 +1497,23 @@ function Install-Program {
                                 $PMInstall = $False
                                 #Install-Program @InstallProgramSplatParams
                                 New-Runspace -RunspaceName "InstProgChocoCmd" -ScriptBlock {Install-Program @InstallProgramSplatParams}
+
+                                while ($global:RSSyncHash.InstProgChocoCmdResult.Done -ne $True) {
+                                    Write-Verbose "Waiting for install via Chocolatey CmdLine to finish..."
+                                    Start-Sleep -Seconds 1
+                                }
+
+                                if ($global:RSSyncHash.Errors.Count -gt 0) {
+                                    foreach ($ErrMsg in $global:RSSyncHash.Errors) {Write-Error $_}
+                                }
+
+                                if ($global:RSSyncHash.Output) {
+                                    $global:RSSyncHash.Output
+                                }
+
+                                if (!$global:RSSyncHash.Output -or $global:RSSyncHash.Errors.Count -gt 0) {
+                                    Write-Warning "Install via Chocolatey CmdlLine failed. Please update Chocolatey via:`n    cup chocolatey -y"
+                                }
                                 
                                 return
                             }
@@ -3255,8 +3273,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQURPAjJZ9vBTKug6yQkSj5Qv6x
-# Ovagggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUbstmc4++VwcSb+1UYBpY2b2H
+# Ojygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -3313,11 +3331,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFLuXIXQ/UCMWdDAL
-# 7W6DaVMBKdsxMA0GCSqGSIb3DQEBAQUABIIBAFa+M/gP30LWwhmZhJj2YcRAOdvU
-# IAoLAP7ZOueN3yozOebhmLmHQDjfhPPjmndRRaUsgANKkN/niN/ixrFAwIHbAGfE
-# HkqvHw+uvBvSU2KeDkss80jX/u4+psixGPHkKCD86mjd7CFRepIFK1Or9UUpQFik
-# Kz2S8LWQjOnSXLdsZ9FNi80w4Ea8QjRNSKyhUs+WW4YauzKYh/LiZ1VHenbvDkpy
-# GO28PlpjFiqXd2St7ChIP4+TU5yVbwDcoeguyBxWK9HAgw4jRtytjZCTBDsSV1aN
-# B/RuXUNmuwlDp8xGxcPQXtEzaVxv7r3NdKa76L2zJgmZ8+Uk/nN9IbGodB4=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFBrcnw9bqCzZM/As
+# ZFeaY2rf3KPbMA0GCSqGSIb3DQEBAQUABIIBAKVoAeVpwUIF1HfTxR/UWgZNiYag
+# wWXl+/U3lsSmdm10lWipSNiSvJeUePHtIqXneG0w3yjT5szIvkVh8NUIWJFthR3n
+# iCnhQbFklxY23m/q0e4sr9m7gjnuHd0UlangMauNmdjJV5ffTmAck6Kk8PzvN+Jm
+# wGi/wb2zCcCc6bqmzrkMJxK96UvdXrmCszZNKUSLVCPtI1VmgK1SZ2AjQfvS7ILu
+# 3xv+w68RIvNb/bggF9hb2v9VjHqpl9GtT7Edxh/CpD3/IhK6Ac6EarXHMbNHawTn
+# Yo/apvg6SNanRWLlnj0xxHx0ehB0AU3QTy0OhliJAaEEegRPZhyi6EWXW7U=
 # SIG # End signature block

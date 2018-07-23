@@ -1,5 +1,9 @@
 # Change log
 
+## 0.9.8 (July 23, 2018)
+
+- Fixed issue with Output and Error Handling when falling back to Chocolatey CmdLine
+
 ## 0.9.7 (July 18, 2018)
 
 - Updated GetModuleDependencies Private function to help Module load faster in PSCore
