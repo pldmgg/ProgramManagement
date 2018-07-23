@@ -186,7 +186,7 @@ function InvokePSCompatibility {
             foreach ($ModuleName in $ModulesNotFoundLocally) {
                 try {
                     if (![bool]$(Get-Module -ListAvailable $ModuleName) -and $InstallModulesNotAvailableLocally) {
-                        Install-Module $ModuleName -Force -ErrorAction Stop -WarningAction SilentlyContinue
+                        Install-Module $ModuleName -AllowClobber -Force -ErrorAction Stop -WarningAction SilentlyContinue
                         $null = $ModulesSuccessfullyInstalled.Add($ModuleName)
                     }
 
@@ -211,7 +211,7 @@ function InvokePSCompatibility {
 
                     $ManifestFileItem = Invoke-WinCommand -ComputerName localhost -ScriptBlock {
                         if (![bool]$(Get-Module -ListAvailable $args[0]) -and $args[1]) {
-                            Install-Module $args[0] -Force
+                            Install-Module $args[0] -AllowClobber -Force
                         }
                         $(Get-Item $(Get-Module -ListAvailable $args[0]).Path)
                     } -ArgumentList $ModuleName,$InstallModulesNotAvailableLocally -ErrorAction Stop -WarningAction SilentlyContinue
@@ -630,8 +630,8 @@ function InvokePSCompatibility {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUVJgMzUWcqIP9jQHunSkoQ3at
-# yL6gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU/KPjbgVoEi9R+q8MUI5jXky1
+# Q9Kgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -688,11 +688,11 @@ function InvokePSCompatibility {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFDyNibdLwzrF5884
-# kNIcsLN+Gx5AMA0GCSqGSIb3DQEBAQUABIIBADS+XKtKQvRyuVb6GBhStP9x3wIA
-# /BUATXc3CE1128XXL/gPnusX+ZMK8fSLnT3xbXlCfJLXWWJeFM1pq+PH6HXHMOdY
-# Pe26qWz+qqfxM7dfytRE5ykD/lgi3UKwo4C+khdORN3RsiueLcEATUt9IRqtyIyn
-# WYN+CwbtQQh6M6PB6M3KrdokBG4WZeyd3EcEbUGC+gms/27uhurXL15oc4LReBe3
-# bKZOV0V0KHPyym2blJamgF0Pr/T9MPbR4GRyQ/s3W28ramywTAhLGSayRtEWtiIp
-# TU8J6ePEp7HaM3Eibx/fJFBYTsA2EhIiRwnDX2RxZhW779T+I9dhMtvShcE=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFK9FrcFWJGGzqvm5
+# tw1A8wA2fRacMA0GCSqGSIb3DQEBAQUABIIBAHr6wvlQF4RiRqY3fnSDcshhu6Fv
+# 4BDSZz2enT0DRrIxidznJMIHBNDdo99GpeTyjzmXEz47AfY+qXlguHkAxgcRhDNf
+# 55Hgr6QBg3bgGPhzIbNrsobEqedqVfu4qRdB41/pez1QHdVMcSDH8MZTHWeBhmWM
+# FwGXuaot6fl6VUYb4sp8oqbPGDmtxchcyOcRLbN0RvnFZ+GN0FiakOVBaeTR2Mrm
+# qB8kr8tqoi1tIvfE6VM9khGOkJDgKrYjWVqyBF30Oc05CLfWoqZpsrfCVXjTN9kC
+# sVRySkG8TpIarjXAmlvBRUbwmSjQERUqGh8GYww8Map9pLCl/kSgrLAqVNg=
 # SIG # End signature block

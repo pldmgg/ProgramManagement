@@ -1,5 +1,9 @@
 # Change log
 
+## 0.9.9 (July 23, 2018)
+
+- Updated InvokeModuleDependencies and InvokePSCompatibility Private functions to ensure Module Dependencies are installed even when function names overlap
+
 ## 0.9.8 (July 23, 2018)
 
 - Fixed issue with Output and Error Handling when falling back to Chocolatey CmdLine

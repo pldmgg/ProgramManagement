@@ -62,7 +62,7 @@ function InvokeModuleDependencies {
             if (![bool]$(Get-Module -ListAvailable $ModuleName) -and $InstallModulesNotAvailableLocally) {
                 # Install the Module
                 try {
-                    $null = Install-Module $ModuleName -Force -ErrorAction Stop -WarningAction SilentlyContinue
+                    $null = Install-Module $ModuleName -AllowClobber -Force -ErrorAction Stop -WarningAction SilentlyContinue
                 }
                 catch {
                     Write-Error $_
@@ -107,8 +107,8 @@ function InvokeModuleDependencies {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUxf5LCOboV1RmJqqUCe6OT0qn
-# D4agggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUaltTtM3a0PZxjPhwHRiwr0CW
+# NeKgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -165,11 +165,11 @@ function InvokeModuleDependencies {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFKz4yZ8Vnoas8jvE
-# MPPk4mBtUzfmMA0GCSqGSIb3DQEBAQUABIIBADADiY7S2ajfVFDx8Xie86TOKcxV
-# otbGuugX4e9Ok9oGggU02VRSz6BR4ftANpLOhqJL75/VOx77+B3lnafFmzoN1ywm
-# /Jdu7Chzk/db6gDyGHHJZ8uj4MxSfMQywnpIwjV7bkqlsceu6lpGWs+4XHq+yNv4
-# 56q9A0KIHgMZV3lEtsChxstZdudL1AgH9N+8n82AUsXGl9P5+Fv7Ytbc1HU/dCOk
-# I1XzghWsUZ9EdT+XMx0zbm4OvqwtAbFfY9kTqXhClXzUwIv1iFlIfVGiI9BUciv7
-# 87XbTDnKWN6bAPU4aGUWPgGr6B7ovHdTCT/2To78Sj3hp8OXQVt6+4vD2Aw=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFAw6MqfpCU2NqmVM
+# aseriodC3UyZMA0GCSqGSIb3DQEBAQUABIIBAA2rsymIqaEPlr/yx1OcSp19FXRs
+# n6sScvISS/0uZMz1f2mUg+U50B/0zro1w18eTbnOq0M0wGRZIog53c/0+2X9XJCm
+# zgiKj2X5d8m+V6RFSc55f98bNdMt3UD243yZ26WNU59aM4zGaZKHRAA/TfTTb+LT
+# BSFV52ahejI/xE/11ScyVKZSPIW5r2fo7swSYFPONQtuH8eI+xBh/YkPfoK7i1FZ
+# Y8G2BFaAqLa6aYeWAAOY60BpWFlZ20GhqBJ5g/LJ3HwhfTitE1Ph9ufQtDyhj5BQ
+# rovRp/MCsCkv8MhniYvgAC2y/EjbDAwN0U+ldIE2ZSyoS27LtUQVnR/5UZI=
 # SIG # End signature block
