@@ -1,5 +1,9 @@
 # Change log
 
+## 1.0.2 (August 1, 2018)
+
+- Updated WinCompat Functions
+
 ## 1.0.1 (July 23, 2018)
 
 - Updated InvokePSCompatibility Private to improve import speed in PSCore

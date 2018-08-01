@@ -60,9 +60,27 @@ function InvokeModuleDependencies {
             }
 
             if (![bool]$(Get-Module -ListAvailable $ModuleName) -and $InstallModulesNotAvailableLocally) {
-                # Install the Module
+                $searchUrl = "https://www.powershellgallery.com/api/v2/Packages?`$filter=Id eq '$ModuleName' and IsLatestVersion"
+                $PSGalleryCheck = Invoke-RestMethod $searchUrl
+                if (!$PSGalleryCheck -or $PSGalleryCheck.Count -eq 0) {
+                    $searchUrl = "https://www.powershellgallery.com/api/v2/Packages?`$filter=Id eq '$ModuleName'"
+                    $PSGalleryCheck = Invoke-RestMethod $searchUrl
+
+                    if (!$PSGalleryCheck -or $PSGalleryCheck.Count -eq 0) {
+                        Write-Warning "Unable to find Module '$ModuleName' in the PSGallery! Skipping..."
+                        continue
+                    }
+
+                    $PreRelease = $True
+                }
+
                 try {
-                    $null = Install-Module $ModuleName -AllowClobber -Force -ErrorAction Stop -WarningAction SilentlyContinue
+                    if ($PreRelease) {
+                        ManualPSGalleryModuleInstall -ModuleName $ModuleName -DownloadDirectory "$HOME\Downloads" -PreRelease -ErrorAction Stop -WarningAction SilentlyContinue
+                    }
+                    else {
+                        Install-Module $ModuleName -AllowClobber -Force -ErrorAction Stop -WarningAction SilentlyContinue
+                    }
                 }
                 catch {
                     Write-Error $_
@@ -107,8 +125,8 @@ function InvokeModuleDependencies {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUaltTtM3a0PZxjPhwHRiwr0CW
-# NeKgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUIuI5NgclVoPYJ+IBBAMJ6NCJ
+# FrKgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -165,11 +183,11 @@ function InvokeModuleDependencies {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFAw6MqfpCU2NqmVM
-# aseriodC3UyZMA0GCSqGSIb3DQEBAQUABIIBAA2rsymIqaEPlr/yx1OcSp19FXRs
-# n6sScvISS/0uZMz1f2mUg+U50B/0zro1w18eTbnOq0M0wGRZIog53c/0+2X9XJCm
-# zgiKj2X5d8m+V6RFSc55f98bNdMt3UD243yZ26WNU59aM4zGaZKHRAA/TfTTb+LT
-# BSFV52ahejI/xE/11ScyVKZSPIW5r2fo7swSYFPONQtuH8eI+xBh/YkPfoK7i1FZ
-# Y8G2BFaAqLa6aYeWAAOY60BpWFlZ20GhqBJ5g/LJ3HwhfTitE1Ph9ufQtDyhj5BQ
-# rovRp/MCsCkv8MhniYvgAC2y/EjbDAwN0U+ldIE2ZSyoS27LtUQVnR/5UZI=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFHQYj9dUlTJF8DaI
+# IpjX5ukNYurvMA0GCSqGSIb3DQEBAQUABIIBAHwp7RxCg3BJNoCr9H7WLLxY6eUR
+# iSwOSM8tEo/grJROW9zd8OlDY9/fetg4bDUD8D95v/ydfJNB4z+R+i3042YxeNit
+# utJnOxucbW9t4LzD3DsMleh2sZ8L2bqW2E0FYQqDfeQywFYvLi5qXk6dHuzvJB5F
+# uaJRbORkRUicBuga9pt4j4IOGNgl8nV4WOU2flUVzACDUhYgsaP/x+BUl9+UYPvO
+# ZH0tJrjZ6ZwlXywPnMvqDZVRfqEfuVWjxFI6QqblWBrPoEHC9Gc2f0JxTfON9/lb
+# I44Y2p52m/Nn23pAfWbpCNsYovGL/zJsn8B6ivImTvqN9o3DsdHJ0imzRvo=
 # SIG # End signature block
