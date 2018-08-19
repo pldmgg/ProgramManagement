@@ -100,6 +100,12 @@
         exe files associated with the program installation in the 'PossibleMainExecutables' property of the function's
         output.
 
+    .PARAMETER Force
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If used, install will be attempted for the specified -ProgramName even if it is
+        already installed.
+
     .EXAMPLE
         # Open an elevated PowerShell Session, import the module, and -
 
@@ -164,7 +170,10 @@ function Install-Program {
         [switch]$ScanCDriveForMainExeIfNecessary,
 
         [Parameter(Mandatory=$False)]
-        [switch]$ResolveCommandPath
+        [switch]$ResolveCommandPath,
+
+        [Parameter(Mandatory=$False)]
+        [switch]$Force
     )
 
     ##### BEGIN Native Helper Functions #####
@@ -506,24 +515,24 @@ function Install-Program {
         $PackageManagementCurrentInstalledPackage.Version -ne $PackageManagementPreviousVersion.Version -or
         $ChocoPreviousVersion -ne $ChocolateyInstalledProgramObjects.Version
     )
-    if (!$GetPreviousVersion) {
+    if ($GetPreviousVersion) {
         $VersionCheck = $CheckPreviousVersion
-        $PackageManagementRequiredVersion = $PackageManagementLatestVersion.Version
+        $PackageManagementRequiredVersion = $PackageManagementPreviousVersion.Version
         $ChocoRequiredVersion = $ChocoLatestVersion
     }
     else {
         $VersionCheck = $CheckLatestVersion
-        $PackageManagementRequiredVersion = $PackageManagementPreviousVersion.Version
+        $PackageManagementRequiredVersion = $PackageManagementLatestVersion.Version
         $ChocoRequiredVersion = $ChocoPreviousVersion
     }
 
     # Install $ProgramName if it's not already or if it's outdated...
-    if ($($PackageManagementInstalledPrograms.Name -notcontains $ProgramName -and
+    if ($($PSGetInstalledPackageObjects.Name -notcontains $ProgramName -and
     $ChocolateyInstalledProgramsPSObjects.ProgramName -notcontains $ProgramName) -or
-    $VersionCheck
+    $VersionCheck -or $Force
     ) {
         if ($UsePowerShellGet -or $(!$UsePowerShellGet -and !$UseChocolateyCmdLine) -or 
-        $PackageManagementInstalledPrograms.Name -contains $ProgramName -and $ChocolateyInstalledProgramsPSObjects.ProgramName -notcontains $ProgramName
+        $PSGetInstalledPackageObjects.Name -contains $ProgramName -and $ChocolateyInstalledProgramsPSObjects.ProgramName -notcontains $ProgramName
         ) {
             $InstallPackageSplatParams = @{
                 Name            = $ProgramName
@@ -867,7 +876,12 @@ function Install-Program {
                                 [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName
                             }
 
-                            # If we STILL don't have $ExePath, then we have to give up...
+                            # If we STILL don't have $ExePath, try this...
+                            if (!$ExePath -or $ExePath.Count -eq 0) {
+                                $ExePath = $(Get-ChildItem -Path $($(Get-Package $ProgramName).Source | Split-Path -Parent) -Recurse -File | Where-Object {$_.Name -like "*$ProgramName*exe"}).FullName
+                            }
+
+                            # If we STILL don't have $ExePath, we need to give up...
                             if (!$ExePath -or $ExePath.Count -eq 0) {
                                 #Write-Warning "Unable to find main executable for $ProgramName!"
                                 $MainExeSearchFail = $True
@@ -1078,8 +1092,8 @@ function Install-Program {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUkjxR4pTZgxotGxz6aSOQnaeC
-# Wiagggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUdfjcq58ZD/cka6nYk0s2ExKC
+# UPmgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -1136,11 +1150,11 @@ function Install-Program {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFBERel0VWV0Kh8aL
-# g0aXrbwz5gYgMA0GCSqGSIb3DQEBAQUABIIBABRAuCr7FCQEDYAXogndYyYPoS9Q
-# TDxlKJf1xVMCOFEdP/twWT6TJPT+MIlXT4HKimZqFShRwsMJRYzG+QoyTZvqnbSO
-# 9eXb4QYZ7RRN4/AH+i0U0jatJ+x6niU6SXn9XtUPRG4QrliCj9nSgqifiFEO4hqs
-# y/wanQhIjsl0IaN6RqMQvJeawbX9mb/ChpyIsQZz/tk/GvcvlnjSCnJg0gefExEG
-# srbYhJ7Rlqm0Ee7BV7yrejopQVnDDl/Lxfws3fLFLBcW9+1N/JHOoso6ulUfl6w+
-# 0Nd4lX8vw2lJT1jdQv4/EnGr/8gY1/m/cxhnD4AHuxlRiokLAB4A7VyC+B0=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFL+T5IZZRFAyg01L
+# fOC6ZcXLfMgWMA0GCSqGSIb3DQEBAQUABIIBAEXuyXBE4MG6geowTGFJuEN2k+OF
+# sikGlNPKKYX62ixHtvJzHkO6KZGM+3lhwWnptlyzRVClSGIsKSfZSwq56ESSKJe2
+# fIhG7NR2ePAjTbyeyYL9wMs9nRc4iPQRfoNsb+fKU0R8wz6RQowccv1eCddgOUpX
+# /WknfEkwGKoS7vd+HhhsiNIetg58jyXIu5RGk7CBEMipUQ28r0Gc1jCPShbTx8h6
+# pEF1CDsLzb4XJAz81vKzhIjKZL5QLdAodSLIzx/IDq49XBVfYLn4OkH7cU1XEKMp
+# zRXciUvUUxP5dXGtpGykwO2h4YNTn675F1aqO71wvy69X45WmtPVE7RhZuU=
 # SIG # End signature block

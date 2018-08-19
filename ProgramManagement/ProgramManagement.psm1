@@ -725,6 +725,12 @@ function Install-ChocolateyCmdLine {
         exe files associated with the program installation in the 'PossibleMainExecutables' property of the function's
         output.
 
+    .PARAMETER Force
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If used, install will be attempted for the specified -ProgramName even if it is
+        already installed.
+
     .EXAMPLE
         # Open an elevated PowerShell Session, import the module, and -
 
@@ -789,7 +795,10 @@ function Install-Program {
         [switch]$ScanCDriveForMainExeIfNecessary,
 
         [Parameter(Mandatory=$False)]
-        [switch]$ResolveCommandPath
+        [switch]$ResolveCommandPath,
+
+        [Parameter(Mandatory=$False)]
+        [switch]$Force
     )
 
     ##### BEGIN Native Helper Functions #####
@@ -1131,24 +1140,24 @@ function Install-Program {
         $PackageManagementCurrentInstalledPackage.Version -ne $PackageManagementPreviousVersion.Version -or
         $ChocoPreviousVersion -ne $ChocolateyInstalledProgramObjects.Version
     )
-    if (!$GetPreviousVersion) {
+    if ($GetPreviousVersion) {
         $VersionCheck = $CheckPreviousVersion
-        $PackageManagementRequiredVersion = $PackageManagementLatestVersion.Version
+        $PackageManagementRequiredVersion = $PackageManagementPreviousVersion.Version
         $ChocoRequiredVersion = $ChocoLatestVersion
     }
     else {
         $VersionCheck = $CheckLatestVersion
-        $PackageManagementRequiredVersion = $PackageManagementPreviousVersion.Version
+        $PackageManagementRequiredVersion = $PackageManagementLatestVersion.Version
         $ChocoRequiredVersion = $ChocoPreviousVersion
     }
 
     # Install $ProgramName if it's not already or if it's outdated...
-    if ($($PackageManagementInstalledPrograms.Name -notcontains $ProgramName -and
+    if ($($PSGetInstalledPackageObjects.Name -notcontains $ProgramName -and
     $ChocolateyInstalledProgramsPSObjects.ProgramName -notcontains $ProgramName) -or
-    $VersionCheck
+    $VersionCheck -or $Force
     ) {
         if ($UsePowerShellGet -or $(!$UsePowerShellGet -and !$UseChocolateyCmdLine) -or 
-        $PackageManagementInstalledPrograms.Name -contains $ProgramName -and $ChocolateyInstalledProgramsPSObjects.ProgramName -notcontains $ProgramName
+        $PSGetInstalledPackageObjects.Name -contains $ProgramName -and $ChocolateyInstalledProgramsPSObjects.ProgramName -notcontains $ProgramName
         ) {
             $InstallPackageSplatParams = @{
                 Name            = $ProgramName
@@ -1492,7 +1501,12 @@ function Install-Program {
                                 [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName
                             }
 
-                            # If we STILL don't have $ExePath, then we have to give up...
+                            # If we STILL don't have $ExePath, try this...
+                            if (!$ExePath -or $ExePath.Count -eq 0) {
+                                $ExePath = $(Get-ChildItem -Path $($(Get-Package $ProgramName).Source | Split-Path -Parent) -Recurse -File | Where-Object {$_.Name -like "*$ProgramName*exe"}).FullName
+                            }
+
+                            # If we STILL don't have $ExePath, we need to give up...
                             if (!$ExePath -or $ExePath.Count -eq 0) {
                                 #Write-Warning "Unable to find main executable for $ProgramName!"
                                 $MainExeSearchFail = $True
@@ -2169,6 +2183,11 @@ function New-RunSpace {
         $SyncHash."$RunSpaceName`Result" | Add-Member -Type NoteProperty -Name ErrorsDetailed -Value $null
         $SyncHash."$RunspaceName`Result".Errors = [System.Collections.ArrayList]::new()
         $SyncHash."$RunspaceName`Result".ErrorsDetailed = [System.Collections.ArrayList]::new()
+        $SyncHash."$RunspaceName`Result" | Add-Member -Type NoteProperty -Name ThisRunspace -Value $($(Get-Runspace)[-1])
+        [System.Collections.ArrayList]$LiveOutput = @()
+        $SyncHash."$RunspaceName`Result" | Add-Member -Type NoteProperty -Name LiveOutput -Value $LiveOutput
+        
+
         
         ##### BEGIN Generic Runspace Helper Functions #####
 
@@ -3286,14 +3305,15 @@ function Update-PackageManagement {
 
 
 [System.Collections.ArrayList]$script:FunctionsForSBUse = @(
-    ${Function:AddWinRMTrustLocalHost}.Ast.Extent.Text 
-    ${Function:AddLastWriteTimeToRegKey}.Ast.Extent.Text 
+    ${Function:AddLastWriteTimeToRegKey}.Ast.Extent.Text
+    ${Function:AddWinRMTrustLocalHost}.Ast.Extent.Text
     ${Function:GetElevation}.Ast.Extent.Text
     ${Function:GetModuleDependencies}.Ast.Extent.Text
     ${Function:GetMSIFileInfo}.Ast.Extent.Text
     ${Function:GetNativePath}.Ast.Extent.Text
     ${Function:InvokeModuleDependencies}.Ast.Extent.Text
     ${Function:InvokePSCompatibility}.Ast.Extent.Text
+    ${Function:MaualPSGalleryModuleInstall}.Ast.Extent.Text
     ${Function:PauseForWarning}.Ast.Extent.Text
     ${Function:UnzipFile}.Ast.Extent.Text
     ${Function:Get-AllPackageInfo}.Ast.Extent.Text
@@ -3309,8 +3329,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUAKdcSE7O0zuPu5A7xG3a1e4U
-# YTagggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUEk6Z4AJC/n2NkXVwe55YSxpa
+# +VKgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -3367,11 +3387,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFNhUNmPVUXO5mbqa
-# h3EBR79m21YDMA0GCSqGSIb3DQEBAQUABIIBAGMczw5X/jiZB/SCnOOhFIKpIG2G
-# cRNvRRWk0SQnNBYWAySjMdF5lIpa2QJCyPqpnbKPZPU4W6QZqQdesoF/TVcfGuQ3
-# kiJeyc4FtYmv80EAn2sXASm0XRV0mBXX83LwUfg+b/2YQQioOpvWVJ04XGlZhvVe
-# icKkrUQyC3Ci8YYR3ARVjAy1MgeiGVzzlbkgobmq95Yo38IkX5fBrDNdr/2llqID
-# tQzNxlBqFEG5wK6DW+3vJuwj4OHb97IGHwT/5Gp9XS5SVBNicFbIwLxezR5Y0vTz
-# vqa4C9zXTxbUSZ6kHdNRAFAagIOLEosSa1DTCLTU2lm/lXTThV5QuRBx9fg=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFFB7ag7euiUzHB66
+# fMh7JlolgdJpMA0GCSqGSIb3DQEBAQUABIIBAB7xGDssx7rrqfQFBA2WSHfKcB+R
+# JAUtkUnJgbWcBcDTnAIKobNiGxIYZQl0D/ebnoel0LpTsiZvLfQ5IjkXx860/6Nr
+# zrg9dO1FiHCmaxcVQDFSQ3f5Zg2sTsp5HPLmCCG+gx5sD8ic32vTUsDcvf4rhEaI
+# 44iWCRy1xz+FnYC6dhGJ3wO2g3xBNkCWFGln8Z7qwEz9UY/dh4EpXPOAkJG6sN7o
+# zy/rm+PrUF7dSF/YeAqutLtCrlfvF8oUEa2sBt2aBXK9IccCVEOFEwsQ6WCKst+S
+# NaiCcM7bbR4AbVLSyG4pOqj6VgIn8zAshkJDcZkVpDbGBl44NDnG/5C0Cxk=
 # SIG # End signature block
