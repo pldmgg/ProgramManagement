@@ -1,5 +1,9 @@
 # Change log
 
+## 1.0.3 (August 19, 2018)
+
+- Fixed logic that determines whether or not to attempt install and added -Force switch
+
 ## 1.0.2 (August 1, 2018)
 
 - Updated WinCompat Functions
