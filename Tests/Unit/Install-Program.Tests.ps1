@@ -26,7 +26,6 @@ param(
     }
 #>
 
-<#
 # Load CustomAssertions.psm1
 Import-Module "$env:BHProjectPath\Tests\CustomAssertions.psm1" -Force
 Add-AssertionOperator -Name 'BeTypeOrType' -Test $Function:BeTypeOrType
@@ -362,7 +361,6 @@ InModuleScope ProgramManagement {
         }
     }
 }
-#>
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
