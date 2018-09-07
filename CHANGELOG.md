@@ -1,5 +1,9 @@
 # Change log
 
+## 1.0.5 (September 7, 2018)
+
+- Removed erroneous message saying package was installed when it was already present and no install action actually took place.
+
 ## 1.0.4 (September 7, 2018)
 
 - Fixed Test-Path logic in Install-Program where sometimes the -Path parameter could be $null

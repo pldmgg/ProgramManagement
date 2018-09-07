@@ -1073,7 +1073,12 @@ function Install-Program {
 
     1..3 | foreach {Pop-Location}
 
-    Write-Host "The program '$ProgramName' was installed successfully!" -ForegroundColor Green
+    if ($InstallAction -match "Updated|FreshInstall") {
+        Write-Host "The program '$ProgramName' was installed successfully!" -ForegroundColor Green
+    }
+    elseif ($InstallAction -eq "AlreadyInstalled") {
+        Write-Host "The program '$ProgramName' is already installed!" -ForegroundColor Green
+    }
 
     $OutputHT = [ordered]@{
         InstallManager      = $InstallManager
@@ -1099,8 +1104,8 @@ function Install-Program {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUgqrOp2sy0Z4jFhN3DOZ2yqrU
-# 43egggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUAyVCc5DWFWHvcMW1erNfF5Nw
+# 2zigggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -1157,11 +1162,11 @@ function Install-Program {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFL2EguuIDUmCPeu2
-# w4U0GSP9tXlfMA0GCSqGSIb3DQEBAQUABIIBADICnOX6/IFk+jvm+k9VEV8ZnFuz
-# Z4xtA2SD/B6zsdLOMq3deSSe4CllOeYglqPR2AdCeiIhFkxldcEDvUlzihIWEuRB
-# oXzf3EasQTrgxj2J2gIFgVI4GVZErgJt4y5kxIdZNhWY9tNaHVn1b7KeagsM7OVc
-# 0v7HrM1Bw/tk/6tP0SUN3jp7uzRSWHp93q/rJIA1IzZFOAXdIQucJQAdDZ6HJdaL
-# Obc4FvsfBZ3vLxhQlmGjBSoeV1mCljgp75NDGUXnPVuXIxHxKcs9eB48zCQXsd3z
-# LHedLbrG1PE+sJarmKMxo8Za6spTHGKlZ1ahccQC6Xm9mTgLMGPPvE72u3s=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFJhoJQArI+CwgRPE
+# +zuZhIR+RKZeMA0GCSqGSIb3DQEBAQUABIIBAIWw869zwiV0Rp0bhnsiyEchSFdG
+# B26JU+jdvDVOFTTowEA7ZJGv14NBFU6hgidirTH5B2NpNdSWePlAxFKQkoRSl9CQ
+# ekGnirMXrOEz0Y1sL3zkFgb7jc5gJ5bfTrceIBcolHSGqezRfDbbAN8Uet8nY2zI
+# jmF+QygfeFjYcAXQCBujDjSCq2V6KWZ3aC7UTqW+1ljqf/n1rXs8c4gAkGiJwIfh
+# zNSl1OGpDwO7Ed8xDMO5iwH/wGZgElQZ2Q0nNLO6E3mwnayWL8tytWUwEpejTCcd
+# JRIbZjescCrufwXFUk2o5a7Zv2tByhHpz8RYqoON42//K9AsWnfyf/8IAiQ=
 # SIG # End signature block
