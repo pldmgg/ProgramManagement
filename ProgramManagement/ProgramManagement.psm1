@@ -850,8 +850,10 @@ function Install-Program {
         )
 
         # ...search for it in the $ExpectedInstallLocation if that parameter is provided by the user...
-        if ($ExpectedInstallLocation -and $(Test-Path $ExpectedInstallLocation)) {
-            [System.Collections.ArrayList][Array]$ExePath = $(Get-ChildItem -Path $ExpectedInstallLocation -File -Recurse -Filter "*$FinalCommandName.exe").FullName
+        if ($ExpectedInstallLocation) {
+            if (Test-Path $ExpectedInstallLocation) {
+                [System.Collections.ArrayList][Array]$ExePath = $(Get-ChildItem -Path $ExpectedInstallLocation -File -Recurse -Filter "*$FinalCommandName.exe").FullName
+            }
         }
         # If we don't have $ExpectedInstallLocation provided...
         if (!$ExpectedInstallLocation) {
@@ -892,7 +894,7 @@ function Install-Program {
             }
 
             if ($DirectoriesToSearch.Count -gt 0) {
-                $DirectoriesToSearchFinal = $($DirectoriesToSearch | Sort-Object | Get-Unique) | foreach {if (Test-Path $_) {$_}}
+                $DirectoriesToSearchFinal = $($DirectoriesToSearch | Sort-Object | Get-Unique) | foreach {if (Test-Path $_ -ErrorAction SilentlyContinue) {$_}}
                 $DirectoriesToSearchFinal = $DirectoriesToSearchFinal | Where-Object {$_ -match "$ProgramName"}
 
                 [System.Collections.ArrayList]$ExePath = @()
@@ -1205,7 +1207,7 @@ function Install-Program {
                 # latest from System PATH before we go nuts trying to find the main executable manually
                 Synchronize-SystemPathEnvPath
                 $env:Path = $($(Update-ChocolateyEnv -ErrorAction SilentlyContinue) -split ";" | foreach {
-                    if (-not [System.String]::IsNullOrWhiteSpace($_) -and $(Test-Path $_)) {$_}
+                    if (-not [System.String]::IsNullOrWhiteSpace($_) -and $(Test-Path $_ -ErrorAction SilentlyContinue)) {$_}
                 }) -join ";"
             }
         }
@@ -1344,7 +1346,7 @@ function Install-Program {
             # Now the parent directory of $ProgramName's main executable should be part of the SYSTEM Path
             # (and therefore part of $env:Path). If not, try to find it in Chocolatey directories...
             if ($(Get-Command $FinalCommandName -ErrorAction SilentlyContinue).CommandType -eq "Alias") {
-                while (Test-Path Alias:\$FinalCommandName) {
+                while (Test-Path Alias:\$FinalCommandName -ErrorAction SilentlyContinue) {
                     Remove-Item Alias:\$FinalCommandName
                 }
             }
@@ -1369,8 +1371,10 @@ function Install-Program {
             if (![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue) -and $(!$ExePath -or $ExePath.Count -eq 0)) {
                 $env:Path = Update-ChocolateyEnv -ErrorAction SilentlyContinue
                 
-                if ($ExpectedInstallLocation -and $(Test-Path $ExpectedInstallLocation)) {
-                    [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName -ExpectedInstallLocation $ExpectedInstallLocation
+                if ($ExpectedInstallLocation) {
+                    if (Test-Path $ExpectedInstallLocation -ErrorAction SilentlyContinue) {
+                        [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName -ExpectedInstallLocation $ExpectedInstallLocation
+                    }
                 }
                 else {
                     [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName
@@ -1403,13 +1407,13 @@ function Install-Program {
                 if ($PMInstall -or $ForceChocoInstallScript) {
                     [System.Collections.ArrayList]$PossibleChocolateyInstallScripts = @()
                     
-                    if (Test-Path "C:\Chocolatey") {
+                    if (Test-Path "C:\Chocolatey" -ErrorAction SilentlyContinue) {
                         $ChocoScriptsA = Get-ChildItem -Path "C:\Chocolatey" -Recurse -File -Filter "*chocolateyinstall.ps1" | Where-Object {$($(Get-Date) - $_.CreationTime).TotalMinutes -lt 5}
                         foreach ($Script in $ChocoScriptsA) {
                             $null = $PossibleChocolateyInstallScripts.Add($Script)
                         }
                     }
-                    if (Test-Path "C:\ProgramData\chocolatey") {
+                    if (Test-Path "C:\ProgramData\chocolatey" -ErrorAction SilentlyContinue) {
                         $ChocoScriptsB = Get-ChildItem -Path "C:\ProgramData\chocolatey" -Recurse -File -Filter "*chocolateyinstall.ps1" | Where-Object {$($(Get-Date) - $_.CreationTime).TotalMinutes -lt 5}
                         foreach ($Script in $ChocoScriptsB) {
                             $null = $PossibleChocolateyInstallScripts.Add($Script)
@@ -1433,10 +1437,10 @@ function Install-Program {
                             Write-Host "Trying the Chocolatey Install script from $ChocolateyInstallScript..." -ForegroundColor Yellow
 
                             # Make sure Chocolatey Modules / helper scripts are loaded
-                            if (Test-Path "C:\ProgramData\chocolatey") {
+                            if (Test-Path "C:\ProgramData\chocolatey" -ErrorAction SilentlyContinue) {
                                 $ChocoPath = "C:\ProgramData\chocolatey"
                             }
-                            elseif (Test-Path "C:\Chocolatey") {
+                            elseif (Test-Path "C:\Chocolatey" -ErrorAction SilentlyContinue) {
                                 $ChocoPath = "C:\Chocolatey"
                             }
                             $ChocoInstallerModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "chocolateyinstaller\.psm1"}
@@ -1488,14 +1492,16 @@ function Install-Program {
                             #>
                             $null = & $ChocolateyInstallScript *>$tempfile
                             #$null = Start-Process powershell -ArgumentList "& `"$ChocolateyInstallScript`"" -NoNewWindow -Wait -RedirectStandardOutput $tempfile
-                            if (Test-Path $tempfile) {Remove-Item $tempfile -Force}
+                            if (Test-Path $tempfile -ErrorAction SilentlyContinue) {Remove-Item $tempfile -Force}
 
                             # Now that the $ChocolateyInstallScript ran, search for the main executable again
                             Synchronize-SystemPathEnvPath
                             $env:Path = Update-ChocolateyEnv -ErrorAction SilentlyContinue
 
-                            if ($ExpectedInstallLocation -and $(Test-Path $ExpectedInstallLocation)) {
-                                [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName -ExpectedInstallLocation $ExpectedInstallLocation
+                            if ($ExpectedInstallLocation) {
+                                if (Test-Path $ExpectedInstallLocation -ErrorAction SilentlyContinue) {
+                                    [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName -ExpectedInstallLocation $ExpectedInstallLocation
+                                }
                             }
                             else {
                                 [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName
@@ -1545,6 +1551,7 @@ function Install-Program {
                                 }
                                 $PMInstall = $False
                                 #Install-Program @InstallProgramSplatParams
+                                if (!$(Get-Command choco -ErrorAction SilentlyContinue)) {$null = Install-ChocolateyCmdLine}
                                 New-Runspace -RunspaceName "InstProgChocoCmd" -ScriptBlock {Install-Program @InstallProgramSplatParams}
 
                                 while ($global:RSSyncHash.InstProgChocoCmdResult.Done -ne $True) {
@@ -1634,7 +1641,7 @@ function Install-Program {
             $env:Path = $PathToAdd + ";" + $env:Path
         }
         $FinalEnvPathArray = $env:Path -split ";" | foreach {if(-not [System.String]::IsNullOrWhiteSpace($_)) {$_}}
-        $FinalEnvPathString = $($FinalEnvPathArray | foreach {if (Test-Path $_) {$_}}) -join ";"
+        $FinalEnvPathString = $($FinalEnvPathArray | foreach {if (Test-Path $_ -ErrorAction SilentlyContinue) {$_}}) -join ";"
         $env:Path = $FinalEnvPathString
 
         if (![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue)) {
@@ -3329,8 +3336,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUEk6Z4AJC/n2NkXVwe55YSxpa
-# +VKgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUFVDywFs8TovTWZ21e7WTNtjl
+# ynSgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -3387,11 +3394,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFFB7ag7euiUzHB66
-# fMh7JlolgdJpMA0GCSqGSIb3DQEBAQUABIIBAB7xGDssx7rrqfQFBA2WSHfKcB+R
-# JAUtkUnJgbWcBcDTnAIKobNiGxIYZQl0D/ebnoel0LpTsiZvLfQ5IjkXx860/6Nr
-# zrg9dO1FiHCmaxcVQDFSQ3f5Zg2sTsp5HPLmCCG+gx5sD8ic32vTUsDcvf4rhEaI
-# 44iWCRy1xz+FnYC6dhGJ3wO2g3xBNkCWFGln8Z7qwEz9UY/dh4EpXPOAkJG6sN7o
-# zy/rm+PrUF7dSF/YeAqutLtCrlfvF8oUEa2sBt2aBXK9IccCVEOFEwsQ6WCKst+S
-# NaiCcM7bbR4AbVLSyG4pOqj6VgIn8zAshkJDcZkVpDbGBl44NDnG/5C0Cxk=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFPa0eXWtMeZUUoSz
+# w3/BmX/mUSf9MA0GCSqGSIb3DQEBAQUABIIBAAuhHG2vhTxmLxHwy7gHV+XWQLxJ
+# Tjcc8h8eZL3NHEyyrhrrfPNVrmCPTAhHeq4IAsGbGIVJWaAw7LtcYhk2HoyD/gFu
+# fhW0dpIhFAPuifv0ZYtegkruBDuUaYmBHdGjwY+Qf+jEjC8nVLUVSzRJnAs69x/Z
+# I6GpeVqPknedw4+NTQZq5p0tyVcQPzHcGitd017JtyGr5OUfAy38mlXcnChkyyOd
+# Kk+jVWn19TkQGwbjFF8uacSpdDNfPBLwGdd2yjCSv1b40cIWN8Hr+BIaYyu4jSm4
+# TY/mr6xOsh+fUOR8qWWuEDRW/urY/mL++huGJikR8ySl8/nptZJcli7vxWo=
 # SIG # End signature block

@@ -1,5 +1,9 @@
 # Change log
 
+## 1.0.4 (September 7, 2018)
+
+- Fixed Test-Path logic in Install-Program where sometimes the -Path parameter could be $null
+
 ## 1.0.3 (August 19, 2018)
 
 - Fixed logic that determines whether or not to attempt install and added -Force switch
