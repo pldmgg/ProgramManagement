@@ -924,8 +924,8 @@ function Install-Program {
                             }
                         }
                         catch {
-                            Write-Error $_
-                            Write-Warning "The Chocolatey Install Script $ChocolateyInstallScript has failed!"
+                            #Write-Error $_
+                            Write-Warning "The Chocolatey Install Script $ChocolateyInstallScript has failed with the Error:`n    $($_.Exception.Message)"
                             Write-Host "Installing via Chocolatey CmdLine..."
 
                             # If PackageManagement/PowerShellGet is ERRONEOUSLY reporting that the program was installed

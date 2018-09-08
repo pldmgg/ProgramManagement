@@ -1,5 +1,9 @@
 # Change log
 
+## 1.0.7 (September 8, 2018)
+
+- Changed Errors related to PowerShellGet / PackageManagement Chocolatey Repo Chocolatey installation script failures to Warnings
+
 ## 1.0.6 (September 7, 2018)
 
 - Fixes to logic that handles PowerShell Get / PackageManagement failures
