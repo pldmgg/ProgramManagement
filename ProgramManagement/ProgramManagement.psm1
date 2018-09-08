@@ -1443,6 +1443,33 @@ function Install-Program {
                             elseif (Test-Path "C:\Chocolatey" -ErrorAction SilentlyContinue) {
                                 $ChocoPath = "C:\Chocolatey"
                             }
+                            else {
+                                if ($ExpectedInstallLocation) {
+                                    if (Test-Path $ExpectedInstallLocation -ErrorAction SilentlyContinue) {
+                                        [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName -ExpectedInstallLocation $ExpectedInstallLocation
+                                    }
+                                }
+                                else {
+                                    [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName
+                                }
+    
+                                # If we STILL don't have $ExePath, try this...
+                                if (!$ExePath -or $ExePath.Count -eq 0) {
+                                    $ProgramSourceParentDir = $(Get-Package $ProgramName).Source | Split-Path -Parent
+                                    if (![System.String]::IsNullOrWhiteSpace($ProgramSourceParentDir)) {
+                                        $ExePath = $(Get-ChildItem -Path $ProgramSourceParentDir -Recurse -File | Where-Object {$_.Name -like "*$ProgramName*exe"}).FullName
+                                    }
+                                }
+    
+                                # If we STILL don't have $ExePath, we need to give up...
+                                if (!$ExePath -or $ExePath.Count -eq 0) {
+                                    #Write-Warning "Unable to find main executable for $ProgramName!"
+                                    $MainExeSearchFail = $True
+                                }
+
+                                throw "Unable to find `$ChocoPath!"
+                            }
+                            
                             $ChocoInstallerModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "chocolateyinstaller\.psm1"}
                             $ChocoProfileModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "chocolateyProfile\.psm1"}
                             $ChocoScriptRunnerFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "chocolateyScriptRunner\.ps1"}
@@ -1490,7 +1517,7 @@ function Install-Program {
                             $UpdatedChocoScriptContent = $ChocoScriptContent -replace [regex]::Escape($LineToReplace),$UpdatedLine
                             Set-Content -Path $ChocolateyInstallScript -Value $UpdatedChocoScriptContent
                             #>
-                            $null = & $ChocolateyInstallScript *>$tempfile
+                            $null = & $ChocolateyInstallScript *> $tempfile
                             #$null = Start-Process powershell -ArgumentList "& `"$ChocolateyInstallScript`"" -NoNewWindow -Wait -RedirectStandardOutput $tempfile
                             if (Test-Path $tempfile -ErrorAction SilentlyContinue) {Remove-Item $tempfile -Force}
 
@@ -1509,7 +1536,10 @@ function Install-Program {
 
                             # If we STILL don't have $ExePath, try this...
                             if (!$ExePath -or $ExePath.Count -eq 0) {
-                                $ExePath = $(Get-ChildItem -Path $($(Get-Package $ProgramName).Source | Split-Path -Parent) -Recurse -File | Where-Object {$_.Name -like "*$ProgramName*exe"}).FullName
+                                $ProgramSourceParentDir = $(Get-Package $ProgramName).Source | Split-Path -Parent
+                                if (![System.String]::IsNullOrWhiteSpace($ProgramSourceParentDir)) {
+                                    $ExePath = $(Get-ChildItem -Path $ProgramSourceParentDir -Recurse -File | Where-Object {$_.Name -like "*$ProgramName*exe"}).FullName
+                                }
                             }
 
                             # If we STILL don't have $ExePath, we need to give up...
@@ -1549,9 +1579,23 @@ function Install-Program {
                                 if ($InstallProgramSplatParams.Keys -notcontains "UseChocolateyCmdLine") {
                                     $InstallProgramSplatParams.Add("UseChocolateyCmdLine",$True)
                                 }
+                                if ($InstallProgramSplatParams.Keys -notcontains "ErrorAction") {
+                                    $InstallProgramSplatParams.Add("ErrorAction","Stop")
+                                }
                                 $PMInstall = $False
-                                #Install-Program @InstallProgramSplatParams
-                                if (!$(Get-Command choco -ErrorAction SilentlyContinue)) {$null = Install-ChocolateyCmdLine}
+                                
+                                try {
+                                    if (!$(Get-Command choco -ErrorAction SilentlyContinue)) {$null = Install-ChocolateyCmdLine}
+                                    Install-Program @InstallProgramSplatParams
+                                }
+                                catch {
+                                    Write-Error $_
+                                    Write-Error "Install via Chocolatey CmdlLine failed. Please update Chocolatey via:`n    cup chocolatey -y"
+                                    $global:FunctionResult = "1"
+                                }
+                                return
+                                
+                                <#
                                 New-Runspace -RunspaceName "InstProgChocoCmd" -ScriptBlock {Install-Program @InstallProgramSplatParams}
 
                                 while ($global:RSSyncHash.InstProgChocoCmdResult.Done -ne $True) {
@@ -1572,6 +1616,7 @@ function Install-Program {
                                 }
                                 
                                 return
+                                #>
                             }
                             else {
                                 $global:FunctionResult = "1"
@@ -1593,6 +1638,21 @@ function Install-Program {
         elseif ([bool]$(Get-Package $ProgramName -ErrorAction SilentlyContinue)) {
             Write-Warning "$ProgramName is already installed via PackageManagement/PowerShellGet!"
             $AlreadyInstalled = $True
+        }
+
+        if ($CommandName -or $ExpectedInstallLocation -or $ResolveCommandPath) {
+            if (![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue) -and $(!$ExePath -or $ExePath.Count -eq 0)) {
+                $env:Path = Update-ChocolateyEnv -ErrorAction SilentlyContinue
+                
+                if ($ExpectedInstallLocation) {
+                    if (Test-Path $ExpectedInstallLocation -ErrorAction SilentlyContinue) {
+                        [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName -ExpectedInstallLocation $ExpectedInstallLocation
+                    }
+                }
+                else {
+                    [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName
+                }
+            }
         }
     }
 
@@ -1634,8 +1694,8 @@ function Install-Program {
         }
     }
 
+    # Finalize $env:Path
     if ($ResolveCommandPath -or $PSBoundParameters['CommandName']) {
-        # Finalize $env:Path
         if ([bool]$($ExePath -match "\\$FinalCommandName.exe$")) {
             $PathToAdd = $($ExePath -match "\\$FinalCommandName.exe$") | Split-Path -Parent
             $env:Path = $PathToAdd + ";" + $env:Path
@@ -3341,8 +3401,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUfhMVsyWz2hppD6FfrSQvYvo4
-# SEWgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU8RiajDt2nUu0zZtbpeOV/ZpJ
+# WIqgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -3399,11 +3459,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFBcpYD68TJO10phG
-# PgOGlahKOJvaMA0GCSqGSIb3DQEBAQUABIIBAIndwbb7vbE8JRf3HU7kRDiId4rn
-# f49bWESwY5XxqW/iNlakDHdSYbfUI9lppsloaB5Ammnr9ngJUo0MJkQrOI+QCbH5
-# 4lxYYGgyLlsIlsPVXrXSuw/8y1Jj5VAUtAkHsU4Hg7zYiG1HIdGxGrz+Qeh4rf42
-# R2/4c64kaAhSBAaxYEZnO2yQ10/pfs84I1ZKlWbRSHtY0ZVje4I4YYlFp6e8uvVm
-# 6GZD/ujgEDPdL91hHMK/BpuKf2MkFhLbAJ1auvTlUg9Sqhmv2yBeaFF7EjGROgHP
-# I2UyHQ8wM6jK4G4wjkGF8FbW3aRK/3J2MrRyFyAGRo/N3j0+ZVyc+oWMX0I=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFJ6V7bNRzGXHtw+9
+# Kcelr+n35YftMA0GCSqGSIb3DQEBAQUABIIBALSJ2Vh9+BxPEO4Kw4QhFSZ5ghhA
+# SPJf64sAbmVcljIIFggLoF6DxNTQa0nfPzi1igswq6j57+OkLGCaKlH/QvLKjenb
+# GZpeMjB+P8XsM+UUYn8oq/oDbf5/jX13lKnut2xzFRh5UZjujibQPQPEx5g6mR+o
+# 5IBNUT6cSQu88QYcQbdXIoOPoe5PfOpwldvQquZT+mJSM+BoXgT1p7Bu5Bs/gNw8
+# dDIelttM3TTQJmCltKzA+9sPj6VSoVeZQqjIph9WI7flt2UpGxk+lYm6k8qPXCiA
+# 0qmZVb0RjJNp7ffLCZxtPzY63V6LNt4tPXMRyn/B3QQwfV7qauehnEBIPcg=
 # SIG # End signature block

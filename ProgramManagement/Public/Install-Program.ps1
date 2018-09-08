@@ -818,6 +818,33 @@ function Install-Program {
                             elseif (Test-Path "C:\Chocolatey" -ErrorAction SilentlyContinue) {
                                 $ChocoPath = "C:\Chocolatey"
                             }
+                            else {
+                                if ($ExpectedInstallLocation) {
+                                    if (Test-Path $ExpectedInstallLocation -ErrorAction SilentlyContinue) {
+                                        [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName -ExpectedInstallLocation $ExpectedInstallLocation
+                                    }
+                                }
+                                else {
+                                    [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName
+                                }
+    
+                                # If we STILL don't have $ExePath, try this...
+                                if (!$ExePath -or $ExePath.Count -eq 0) {
+                                    $ProgramSourceParentDir = $(Get-Package $ProgramName).Source | Split-Path -Parent
+                                    if (![System.String]::IsNullOrWhiteSpace($ProgramSourceParentDir)) {
+                                        $ExePath = $(Get-ChildItem -Path $ProgramSourceParentDir -Recurse -File | Where-Object {$_.Name -like "*$ProgramName*exe"}).FullName
+                                    }
+                                }
+    
+                                # If we STILL don't have $ExePath, we need to give up...
+                                if (!$ExePath -or $ExePath.Count -eq 0) {
+                                    #Write-Warning "Unable to find main executable for $ProgramName!"
+                                    $MainExeSearchFail = $True
+                                }
+
+                                throw "Unable to find `$ChocoPath!"
+                            }
+                            
                             $ChocoInstallerModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "chocolateyinstaller\.psm1"}
                             $ChocoProfileModuleFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "chocolateyProfile\.psm1"}
                             $ChocoScriptRunnerFileItem = Get-ChildItem -Path $ChocoPath -Recurse -File | Where-Object {$_.FullName -match "chocolateyScriptRunner\.ps1"}
@@ -865,7 +892,7 @@ function Install-Program {
                             $UpdatedChocoScriptContent = $ChocoScriptContent -replace [regex]::Escape($LineToReplace),$UpdatedLine
                             Set-Content -Path $ChocolateyInstallScript -Value $UpdatedChocoScriptContent
                             #>
-                            $null = & $ChocolateyInstallScript *>$tempfile
+                            $null = & $ChocolateyInstallScript *> $tempfile
                             #$null = Start-Process powershell -ArgumentList "& `"$ChocolateyInstallScript`"" -NoNewWindow -Wait -RedirectStandardOutput $tempfile
                             if (Test-Path $tempfile -ErrorAction SilentlyContinue) {Remove-Item $tempfile -Force}
 
@@ -884,7 +911,10 @@ function Install-Program {
 
                             # If we STILL don't have $ExePath, try this...
                             if (!$ExePath -or $ExePath.Count -eq 0) {
-                                $ExePath = $(Get-ChildItem -Path $($(Get-Package $ProgramName).Source | Split-Path -Parent) -Recurse -File | Where-Object {$_.Name -like "*$ProgramName*exe"}).FullName
+                                $ProgramSourceParentDir = $(Get-Package $ProgramName).Source | Split-Path -Parent
+                                if (![System.String]::IsNullOrWhiteSpace($ProgramSourceParentDir)) {
+                                    $ExePath = $(Get-ChildItem -Path $ProgramSourceParentDir -Recurse -File | Where-Object {$_.Name -like "*$ProgramName*exe"}).FullName
+                                }
                             }
 
                             # If we STILL don't have $ExePath, we need to give up...
@@ -924,9 +954,23 @@ function Install-Program {
                                 if ($InstallProgramSplatParams.Keys -notcontains "UseChocolateyCmdLine") {
                                     $InstallProgramSplatParams.Add("UseChocolateyCmdLine",$True)
                                 }
+                                if ($InstallProgramSplatParams.Keys -notcontains "ErrorAction") {
+                                    $InstallProgramSplatParams.Add("ErrorAction","Stop")
+                                }
                                 $PMInstall = $False
-                                #Install-Program @InstallProgramSplatParams
-                                if (!$(Get-Command choco -ErrorAction SilentlyContinue)) {$null = Install-ChocolateyCmdLine}
+                                
+                                try {
+                                    if (!$(Get-Command choco -ErrorAction SilentlyContinue)) {$null = Install-ChocolateyCmdLine}
+                                    Install-Program @InstallProgramSplatParams
+                                }
+                                catch {
+                                    Write-Error $_
+                                    Write-Error "Install via Chocolatey CmdlLine failed. Please update Chocolatey via:`n    cup chocolatey -y"
+                                    $global:FunctionResult = "1"
+                                }
+                                return
+                                
+                                <#
                                 New-Runspace -RunspaceName "InstProgChocoCmd" -ScriptBlock {Install-Program @InstallProgramSplatParams}
 
                                 while ($global:RSSyncHash.InstProgChocoCmdResult.Done -ne $True) {
@@ -947,6 +991,7 @@ function Install-Program {
                                 }
                                 
                                 return
+                                #>
                             }
                             else {
                                 $global:FunctionResult = "1"
@@ -968,6 +1013,21 @@ function Install-Program {
         elseif ([bool]$(Get-Package $ProgramName -ErrorAction SilentlyContinue)) {
             Write-Warning "$ProgramName is already installed via PackageManagement/PowerShellGet!"
             $AlreadyInstalled = $True
+        }
+
+        if ($CommandName -or $ExpectedInstallLocation -or $ResolveCommandPath) {
+            if (![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue) -and $(!$ExePath -or $ExePath.Count -eq 0)) {
+                $env:Path = Update-ChocolateyEnv -ErrorAction SilentlyContinue
+                
+                if ($ExpectedInstallLocation) {
+                    if (Test-Path $ExpectedInstallLocation -ErrorAction SilentlyContinue) {
+                        [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName -ExpectedInstallLocation $ExpectedInstallLocation
+                    }
+                }
+                else {
+                    [System.Collections.ArrayList][Array]$ExePath = Adjudicate-ExePath -ProgramName $ProgramName -OriginalSystemPath $OriginalSystemPath -OriginalEnvPath $OriginalEnvPath -FinalCommandName $FinalCommandName
+                }
+            }
         }
     }
 
@@ -1009,8 +1069,8 @@ function Install-Program {
         }
     }
 
+    # Finalize $env:Path
     if ($ResolveCommandPath -or $PSBoundParameters['CommandName']) {
-        # Finalize $env:Path
         if ([bool]$($ExePath -match "\\$FinalCommandName.exe$")) {
             $PathToAdd = $($ExePath -match "\\$FinalCommandName.exe$") | Split-Path -Parent
             $env:Path = $PathToAdd + ";" + $env:Path
@@ -1104,8 +1164,8 @@ function Install-Program {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUAyVCc5DWFWHvcMW1erNfF5Nw
-# 2zigggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUA8rPhU7pcrEMl/01XGaFIP0c
+# ct2gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -1162,11 +1222,11 @@ function Install-Program {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFJhoJQArI+CwgRPE
-# +zuZhIR+RKZeMA0GCSqGSIb3DQEBAQUABIIBAIWw869zwiV0Rp0bhnsiyEchSFdG
-# B26JU+jdvDVOFTTowEA7ZJGv14NBFU6hgidirTH5B2NpNdSWePlAxFKQkoRSl9CQ
-# ekGnirMXrOEz0Y1sL3zkFgb7jc5gJ5bfTrceIBcolHSGqezRfDbbAN8Uet8nY2zI
-# jmF+QygfeFjYcAXQCBujDjSCq2V6KWZ3aC7UTqW+1ljqf/n1rXs8c4gAkGiJwIfh
-# zNSl1OGpDwO7Ed8xDMO5iwH/wGZgElQZ2Q0nNLO6E3mwnayWL8tytWUwEpejTCcd
-# JRIbZjescCrufwXFUk2o5a7Zv2tByhHpz8RYqoON42//K9AsWnfyf/8IAiQ=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFF5xoF1deotG9S6d
+# AuKmgIn36MR1MA0GCSqGSIb3DQEBAQUABIIBAKZWYzvSsda/wxi54vDafkt+gTaz
+# aGkS6oxohdY7Ranw00jDYmTevsr4zzqa6vRVpwbrmDin9RAKHVPsZu5XrIaU27Lz
+# Ksrcf6CIN9EB4pv3CzU1P/9XHH3zKxynLCXmNeDl2oGAe4y8z4XyWWKuBTnA4qBh
+# ZE271cGWSpc/WiYAQeEv1WTNApEHevcTfRInQ5za++Orfs0nAX/kIDBtLuMazele
+# 7FyZpejk2QjbZgYU/8tDIrpmdcB0/tGkelh5dSqpeu4CoiCoUbPwJ9gf+53wgFcT
+# 38MFzitvF77DzIutZIcwQcEEgP2Hvzsjq3iOPnyyXldGFgDayEjTl8sZ4PY=
 # SIG # End signature block

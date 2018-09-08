@@ -1,5 +1,9 @@
 # Change log
 
+## 1.0.6 (September 7, 2018)
+
+- Fixes to logic that handles PowerShell Get / PackageManagement failures
+
 ## 1.0.5 (September 7, 2018)
 
 - Removed erroneous message saying package was installed when it was already present and no install action actually took place.
