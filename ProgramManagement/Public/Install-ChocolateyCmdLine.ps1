@@ -236,6 +236,9 @@ function Install-ChocolateyCmdLine {
         else {
             Write-Host "Finished installing Chocolatey CmdLine." -ForegroundColor Green
 
+            # Make sure we have the latest version
+            cup chocolatey -y
+
             try {
                 cup chocolatey-core.extension -y
             }
@@ -285,8 +288,8 @@ function Install-ChocolateyCmdLine {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU0iJR9KE9RUaTRSnlCDXHbpYd
-# 1ragggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU0u6Ecsv+056HyA8JTD2Impd4
+# dj2gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -343,11 +346,11 @@ function Install-ChocolateyCmdLine {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFDq1QHS7yHp4Ta0X
-# wcvp8D1pUUZBMA0GCSqGSIb3DQEBAQUABIIBALrdHYECT+VM7Ntk5Z4EQacgj/mc
-# zGKqABArsetU2BQpr6Y8xasttaK2QI9pBgmAy5QZyKooxaOaixaM46QwQQLVMQa3
-# Cru6p5TFTZX5Jg9fX41zk9w1Cc9K5ry+FINGCQ+zN3PbZP32fdtkP7AsY8I5IFbG
-# Ew5JNikt+NJQuJQ3QGlOd5cx8SuN8SX1hHHDcIpxQhcTi8X1+JYOLWgf9Gu7glEs
-# hbgEShxFQ3hPx0XPrBQtue1Zru8dIZprZf3BUHHJ/mkT1CUjhLxTlfsJxadMG+67
-# v3EGyJwqA/axcQX7oExyBugdagot3/a+YLfop56HLBk66+mgzpnQRlobzHY=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFKNCm8Z1PFBqlx+k
+# Ppcg1KQSexYnMA0GCSqGSIb3DQEBAQUABIIBAEOm5PZCDRaB27d4w2zsE3QtL4zf
+# 3kmNtvSGJ6bg8EVKPQYCsm+PKiRceZr3Ec09Ib5hQuBWlRsu83Sh59DBfdaaUuWF
+# IOqRy8k+6ULOiS9BJxuOyePA6SULpayTE95KjHvvYL6z16g93Ds3ffg3rjie0UKI
+# +IFWKlJ/pLvuMACyfugqBaG0nNHE2x9pUiDbvihOuB+uNay2skgBvpNOHpJP9SUJ
+# 9SyEBkQhxreN1Hux0E7hM+6AKbd3kOYUJ7wXHjEYSn1/CN0kROxHLGcWuaqZKYUV
+# O9eExGpUYqFO6fOs9YrS8es9O1L86wnA4vqAbTjGax2LV8GmXHA7t/FBGQA=
 # SIG # End signature block

@@ -357,7 +357,20 @@ function Install-Program {
         }
     }
 
+    # Install chocolatey resources for PowerShellGet
+    try {
+        $ChocoResourcePackageNames = @("chocolatey-core.extension","chocolatey-windowsupdate.extension")
+        foreach ($ChocoResourcePackageName in $ChocoResourcePackageNames) {
+            $null = Install-Package $ChocoResourcePackageName -ProviderName Chocolatey -Force
+        }
+    }
+    catch {
+        Write-Warning "Unable to install PowerShellGet package $ChocoResourcePackageName ..."
+    }
+
     if ($UseChocolateyCmdLine -or $(!$UsePowerShellGet -and !$UseChocolateyCmdLine)) {
+        #$null = Uninstall-Package chocolatey -ErrorAction SilentlyContinue
+
         if (![bool]$(Get-Command Install-ChocolateyCmdLine -ErrorAction SilentlyContinue)) {
             $InstallCCFunctionUrl = "$MyFunctionsUrl/Install-ChocolateyCmdLine.ps1"
             try {
@@ -536,6 +549,8 @@ function Install-Program {
         if ($UsePowerShellGet -or $(!$UsePowerShellGet -and !$UseChocolateyCmdLine) -or 
         $PSGetInstalledPackageObjects.Name -contains $ProgramName -and $ChocolateyInstalledProgramsPSObjects.ProgramName -notcontains $ProgramName
         ) {
+            $PreInstallPackagesList = $(Get-Package).Name
+
             $InstallPackageSplatParams = @{
                 Name            = $ProgramName
                 Force           = $True
@@ -614,6 +629,8 @@ function Install-Program {
 
             # Make sure Chocolatey CmdLine is installed...if not, install it
             if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
+                #$null = Uninstall-Package chocolatey -ErrorAction SilentlyContinue
+
                 try {
                     $global:FunctionResult = "0"
                     $null = Install-ChocolateyCmdLine -ErrorAction SilentlyContinue -ErrorVariable ICCErr -WarningAction SilentlyContinue
@@ -635,27 +652,46 @@ function Install-Program {
                 return
             }
 
+            # Import all of the Chocolatey helper Modules
+            $ChocolateyResourceDirectories = Get-ChildItem -Path "$env:ProgramData\chocolatey\lib" -Directory | Where-Object {$_.BaseName -match "chocolatey"}
+            $ModulesToImport = foreach ($ChocoResourceDir in $ChocolateyResourceDirectories) {
+                $(Get-ChildItem -Path $ChocoResourceDir.FullName -Recurse -Filter "*.psm1").FullName
+            }
+            foreach ($ChocoModulePath in $($ModulesToImport | Where-Object {$_})) {
+                Import-Module $ChocoModulePath -Global
+            }
+
+            # Since choco installs can hang indefinitely, we're starting another powershell process and giving it a time limit
             try {
-                # TODO: Figure out how to handle errors from choco.exe. Some we can ignore, others
-                # we shouldn't. But I'm not sure what all of the possibilities are so I can't
-                # control for them...
                 if ($PreRelease) {
-                    $Arguments = "$ProgramName --pre -y"
+                    $CupArgs = "--pre -y"
                 }
                 elseif ([bool]$ChocoRequiredVersion) {
-                    $Arguments = "$ProgramName -y --version $ChocoRequiredVersion"
+                    $CupArgs = "--version=$ChocoRequiredVersion -y"
                 }
                 else {
-                    $Arguments = "$ProgramName -y"
+                    $CupArgs = "-y"
                 }
+                $ChocoPrepScript = @(
+                    "`$ChocolateyResourceDirectories = Get-ChildItem -Path '$env:ProgramData\chocolatey\lib' -Directory | Where-Object {`$_.BaseName -match 'chocolatey'}"
+                    '$ModulesToImport = foreach ($ChocoResourceDir in $ChocolateyResourceDirectories) {'
+                    "    `$(Get-ChildItem -Path `$ChocoResourceDir.FullName -Recurse -Filter '*.psm1').FullName"
+                    '}'
+                    'foreach ($ChocoModulePath in $($ModulesToImport | Where-Object {$_})) {'
+                    '    Import-Module $ChocoModulePath -Global'
+                    '}'
+                    "cup $ProgramName $CupArgs"
+                )
+                $ChocoPrepScript = $ChocoPrepScript -join "`n"
+                $FinalArguments = "-NoProfile -NoLogo -Command `"$ChocoPrepScript`""
                 
                 $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
                 #$ProcessInfo.WorkingDirectory = $BinaryPath | Split-Path -Parent
-                $ProcessInfo.FileName = $(Get-Command cup).Source
+                $ProcessInfo.FileName = $(Get-Command powershell).Source
                 $ProcessInfo.RedirectStandardError = $true
                 $ProcessInfo.RedirectStandardOutput = $true
                 $ProcessInfo.UseShellExecute = $false
-                $ProcessInfo.Arguments = $Arguments
+                $ProcessInfo.Arguments = $FinalArguments
                 $Process = New-Object System.Diagnostics.Process
                 $Process.StartInfo = $ProcessInfo
                 $Process.Start() | Out-Null
@@ -667,19 +703,33 @@ function Install-Program {
                 }
                 $stdout = $Process.StandardOutput.ReadToEnd()
                 $stderr = $Process.StandardError.ReadToEnd()
-                $AllOutput = $stdout + $stderr
+                $AllOutputA = $stdout + $stderr
+
+                #$AllOutput | Export-CliXml "$HOME\CupInstallOutput.ps1"
                 
                 if (![bool]$($(clist --local-only $ProgramName) -match $ProgramName)) {
                     if ($AllOutput -match "prerelease" -and $Arguments -notmatch '--pre') {
-                        $Arguments = $Arguments +  ' --pre'
+                        $CupArgs = "--pre -y"
+                        $ChocoPrepScript = @(
+                            "`$ChocolateyResourceDirectories = Get-ChildItem -Path '$env:ProgramData\chocolatey\lib' -Directory | Where-Object {`$_.BaseName -match 'chocolatey'}"
+                            '$ModulesToImport = foreach ($ChocoResourceDir in $ChocolateyResourceDirectories) {'
+                            "    `$(Get-ChildItem -Path `$ChocoResourceDir.FullName -Recurse -Filter '*.psm1').FullName"
+                            '}'
+                            'foreach ($ChocoModulePath in $($ModulesToImport | Where-Object {$_})) {'
+                            '    Import-Module $ChocoModulePath -Global'
+                            '}'
+                            "cup $ProgramName $CupArgs"
+                        )
+                        $ChocoPrepScript = $ChocoPrepScript -join "`n"
+                        $FinalArguments = "-NoProfile -NoLogo -Command `"$ChocoPrepScript`""
 
                         $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
                         #$ProcessInfo.WorkingDirectory = $BinaryPath | Split-Path -Parent
-                        $ProcessInfo.FileName = $(Get-Command cup).Source
+                        $ProcessInfo.FileName = $(Get-Command powershell).Source
                         $ProcessInfo.RedirectStandardError = $true
                         $ProcessInfo.RedirectStandardOutput = $true
                         $ProcessInfo.UseShellExecute = $false
-                        $ProcessInfo.Arguments = $Arguments
+                        $ProcessInfo.Arguments = $FinalArguments
                         $Process = New-Object System.Diagnostics.Process
                         $Process.StartInfo = $ProcessInfo
                         $Process.Start() | Out-Null
@@ -691,15 +741,14 @@ function Install-Program {
                         }
                         $stdout = $Process.StandardOutput.ReadToEnd()
                         $stderr = $Process.StandardError.ReadToEnd()
-                        $AllOutput = $stdout + $stderr
+                        $AllOutputB = $stdout + $stderr
                     }
                 }
                 
                 if (![bool]$($(clist --local-only $ProgramName) -match $ProgramName)) {
-                    Write-Error "There was a problem installing the program '$ProgramName' via 'cup $Arguments'! Halting!"
-                    $global:FunctionResult = "1"
-                    return
+                    throw "'cup $ProgramName $CupArgs' failed with the following Output:`n$AllOutputA`n$AllOutputB"
                 }
+
                 $ChocoInstall = $true
 
                 # Since Installation via the Chocolatey CmdLine was succesful, let's update $env:Path with the
@@ -708,10 +757,18 @@ function Install-Program {
                 $env:Path = Update-ChocolateyEnv -ErrorAction SilentlyContinue
             }
             catch {
-                Write-Error "There was a problem installing $ProgramName using the Chocolatey cmdline! Halting!"
-                Write-Warning "Please update Chocolatey via:`n    cup chocolatey -y"
-                $global:FunctionResult = "1"
-                return
+                Write-Warning $_.Exception.Message
+
+                Write-Host "Trying 'cup $ProgramName $CupArgs' within this powershell process ($PID)..." -ForegroundColor Yellow
+
+                cup $ProgramName -y
+
+                if (![bool]$($(clist --local-only $ProgramName) -match $ProgramName)) {
+                    Write-Error "'cup $ProgramName -y' failed! Halting!"
+                    Write-Warning "Please update Chocolatey via:`n    cup chocolatey -y"
+                    $global:FunctionResult = "1"
+                    return
+                }
             }
         }
 
@@ -767,7 +824,7 @@ function Install-Program {
 
             # If we STILL can't find the main executable...
             if ($(![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue) -and $(!$ExePath -or $ExePath.Count -eq 0)) -or 
-            $(!$FoundExactCommandMatch -and $PSBoundParameters['CommandName']) -or 
+            $(![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue) -and !$FoundExactCommandMatch -and $PSBoundParameters['CommandName']) -or
             $($ResolveCommandPath -and !$FoundExactCommandMatch) -or $ForceChocoInstallScript) {
                 # If, at this point we don't have $ExePath, if we did a $ChocoInstall, then we have to give up...
                 # ...but if we did a $PMInstall, then it's possible that PackageManagement/PowerShellGet just
@@ -869,11 +926,11 @@ function Install-Program {
                             }
 
                             if ($ChocoInstallerModuleFileItem) {
-                                Import-Module $ChocoInstallerModuleFileItem.FullName -ErrorAction SilentlyContinue
+                                Import-Module $ChocoInstallerModuleFileItem.FullName -Global -ErrorAction SilentlyContinue
                                 $ChocoHelpersDir = $ChocoInstallerModuleFileItem.Directory
                             }
                             elseif ($ChocoProfileModuleFileItem) {
-                                Import-Module $ChocoProfileModuleFileItem.FullName -ErrorAction SilentlyContinue
+                                Import-Module $ChocoProfileModuleFileItem.FullName -Global -ErrorAction SilentlyContinue
                                 $ChocoHelpersDir = $ChocoProfileModuleFileItem.Directory
                             }
                             elseif ($ChocoScriptRunnerFileItem) {
@@ -925,16 +982,66 @@ function Install-Program {
                         }
                         catch {
                             #Write-Error $_
-                            Write-Warning "The Chocolatey Install Script $ChocolateyInstallScript has failed with the Error:`n    $($_.Exception.Message)"
-                            Write-Host "Installing via Chocolatey CmdLine..."
+                            Write-Warning "The Chocolatey Install Script that came with the PowerShellGet Package (i.e. $ChocolateyInstallScript) threw an Error:`n    $($_.Exception.Message)"
+                            Write-Warning "Uninstalling $ProgramName and any dependencies that were installed with it prior to trying Chocolatey Cmdline..."
 
-                            # If PackageManagement/PowerShellGet is ERRONEOUSLY reporting that the program was installed
-                            # use the Uninstall-Package cmdlet to wipe it out. This scenario happens when PackageManagement/
-                            # PackageManagement/PowerShellGet gets a Package from the Chocolatey Package Provider/Repo but
-                            # fails to run the chocolateyInstall.ps1 script for some reason.
-                            if ([bool]$(Get-Package $ProgramName -ErrorAction SilentlyContinue)) {
-                                $null = Uninstall-Package $ProgramName -Force -ErrorAction SilentlyContinue
+                            $PackagesToUninstall = $(Get-Package).Name | foreach {if ($PreInstallPackagesList -notcontains $_ -and $_ -notmatch "choco") {$_}} | Sort-Object | Get-Unique
+                            #$PackagesToUninstall | Export-CliXml "$HOME\PackagesToUninstall.xml"
+
+                            $ChocolateyUninstallScript = $ChocolateyInstallScript -replace "chocolateyinstall","chocolateyuninstall"
+                            if (Test-Path $ChocolateyUninstallScript) {
+                                try {
+                                    $tempfile = [IO.Path]::Combine([IO.Path]::GetTempPath(), [IO.Path]::GetRandomFileName())
+                                    $null = & $ChocolateyUninstallScript *> $tempfile
+                                    if (Test-Path $tempfile -ErrorAction SilentlyContinue) {Remove-Item $tempfile -Force}
+                                    
+                                    foreach ($PackageName in $PackagesToUninstall) {
+                                        $Counter = 0
+                                        while ($(Get-Package).Name -contains $PackageName -and $Counter -le 3) {
+                                            $null = Uninstall-Program -ProgramName $PackageName -ErrorAction SilentlyContinue
+                                            $Counter++
+                                        }
+                                    }
+                                }
+                                catch {
+                                    $CheckInstallStatus = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction SilentlyContinue
+
+                                    if (!$CheckInstallStatus -or
+                                    $($CheckInstallStatus.ChocolateyInstalledProgramObjects.Count -ne 0 -or
+                                    $CheckInstallStatus.PSGetInstalledPackageObjects.Count -ne 0 -or
+                                    $CheckInstallStatus.RegistryProperties.Count -ne 0)
+                                    ) {
+                                        $RunUninstallProgramFunction = $True
+                                    }
+                                }
+
                             }
+                            if (!$(Test-Path $ChocolateyUninstallScript) -or $RunUninstallProgramFunction) {
+                                foreach ($PackageName in $PackagesToUninstall) {
+                                    $Counter = 0
+                                    while ($(Get-Package).Name -contains $PackageName -and $Counter -le 3) {
+                                        $null = Uninstall-Program -ProgramName $PackageName -ErrorAction SilentlyContinue
+                                        $Counter++
+                                    }
+                                }
+                            }
+
+                            Write-Host "Checking install status..."
+
+                            $CheckInstallStatus = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction SilentlyContinue
+                            #$CheckInstallStatus | Export-CliXml "$HOME\CheckInstallStatus.xml"
+
+                            if (!$CheckInstallStatus -or
+                            $($CheckInstallStatus.ChocolateyInstalledProgramObjects.Count -ne 0 -or
+                            $CheckInstallStatus.PSGetInstalledPackageObjects.Count -ne 0 -or
+                            $CheckInstallStatus.RegistryProperties.Count -ne 0)
+                            ) {
+                                Write-Error "The PackageManagement/PowerShellGet installation did NOT uninstall cleanly!"
+                                Write-Warning "Please check...`n    Get-Package`n    clist --local-only`n    appwiz.cpl`n...for the following Programs...`n$($PackagesToUninstall -join "`n")"
+                                return
+                            }
+
+                            Write-Host "Installing via Chocolatey CmdLine..."
 
                             if (!$UsePowerShellGet -and !$ForceChocoInstallScript) {
                                 Remove-Module chocolateyinstaller -ErrorAction SilentlyContinue
@@ -960,12 +1067,12 @@ function Install-Program {
                                 $PMInstall = $False
                                 
                                 try {
-                                    if (!$(Get-Command choco -ErrorAction SilentlyContinue)) {$null = Install-ChocolateyCmdLine}
                                     Install-Program @InstallProgramSplatParams
                                 }
                                 catch {
+                                    $ParamstoString = $($InstallProgramSplatParams.GetEnumerator() | foreach {$_.key + ' ' + $_.value}) -join " "
                                     Write-Error $_
-                                    Write-Error "Install via Chocolatey CmdlLine failed. Please update Chocolatey via:`n    cup chocolatey -y"
+                                    Write-Error "'Install-Program $ParamstoString' failed. Please update Chocolatey via:`n    cup chocolatey -y"
                                     $global:FunctionResult = "1"
                                 }
                                 return
@@ -1164,8 +1271,8 @@ function Install-Program {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUA8rPhU7pcrEMl/01XGaFIP0c
-# ct2gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUt106RngRNIEBb3+A1VaowprY
+# 7a6gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -1222,11 +1329,11 @@ function Install-Program {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFF5xoF1deotG9S6d
-# AuKmgIn36MR1MA0GCSqGSIb3DQEBAQUABIIBAKZWYzvSsda/wxi54vDafkt+gTaz
-# aGkS6oxohdY7Ranw00jDYmTevsr4zzqa6vRVpwbrmDin9RAKHVPsZu5XrIaU27Lz
-# Ksrcf6CIN9EB4pv3CzU1P/9XHH3zKxynLCXmNeDl2oGAe4y8z4XyWWKuBTnA4qBh
-# ZE271cGWSpc/WiYAQeEv1WTNApEHevcTfRInQ5za++Orfs0nAX/kIDBtLuMazele
-# 7FyZpejk2QjbZgYU/8tDIrpmdcB0/tGkelh5dSqpeu4CoiCoUbPwJ9gf+53wgFcT
-# 38MFzitvF77DzIutZIcwQcEEgP2Hvzsjq3iOPnyyXldGFgDayEjTl8sZ4PY=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFEw/yUuLP/ZDt1ru
+# cp4aYJPdqx4eMA0GCSqGSIb3DQEBAQUABIIBAHziiY2W3efDGKwoBRYjPbAW/HKD
+# 776UCGBdyY1e1dV4191SJ0PXeoSg/7sR6cBHqks9Vr3LxZvXxpFGQ68N3OYs1eZ8
+# AGznWJ8tayMgEbG7+zatSOEmp86jZbkJkfzUGBwyvQcllV8FY6hP5mMLmRmCjc+/
+# XS6psr0SheGF8HoP64h+PSpwcJUJGO5CdkYKxqWwqhI0FmCXhyBtHOSav+oAboDA
+# JhowqEmqw85dvtm6mZZid85Iw4hEx5oz5pDe5nFGNXt0D602pmUkp6zyucogI7Y0
+# 4qfZZ/85voQbFqctHc8zGEc8z7njfEqZ0RwE3aZFiUA/wIXL1YTFl8UOooo=
 # SIG # End signature block
