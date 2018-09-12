@@ -319,16 +319,6 @@ function Install-Program {
     $global:FunctionResult = "0"
     $MyFunctionsUrl = "https://raw.githubusercontent.com/pldmgg/misc-powershell/master/MyFunctions"
 
-    if ($PSVersionTable.PSEdition -ne "Core") {
-        $null = Install-PackageProvider -Name Nuget -Force -Confirm:$False
-        $null = Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-        $null = Install-PackageProvider -Name Chocolatey -Force -Confirm:$False
-        $null = Set-PackageSource -Name chocolatey -Trusted -Force
-    }
-    else {
-        $null = Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-    }
-
     if ($UpdatePackageManagement) {
         if (![bool]$(Get-Command Update-PackageManagement -ErrorAction SilentlyContinue)) {
             $UpdatePMFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Update-PackageManagement.ps1"
@@ -355,6 +345,23 @@ function Install-Program {
             $global:FunctionResult = "1"
             return
         }
+    }
+
+    try {
+        if ($PSVersionTable.PSEdition -ne "Core") {
+            $null = Install-PackageProvider -Name Nuget -Force -Confirm:$False
+            $null = Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+            $null = Install-PackageProvider -Name Chocolatey -Force -Confirm:$False
+            $null = Set-PackageSource -Name chocolatey -Trusted -Force
+        }
+        else {
+            $null = Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+        }
+    }
+    catch {
+        Write-Error $_
+        $global:FunctionResult = "1"
+        return
     }
 
     # Install chocolatey resources for PowerShellGet
@@ -1271,8 +1278,8 @@ function Install-Program {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUt106RngRNIEBb3+A1VaowprY
-# 7a6gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUFaGw6Xn6PZK3aUXDdSJpS+u9
+# 7/Wgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -1329,11 +1336,11 @@ function Install-Program {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFEw/yUuLP/ZDt1ru
-# cp4aYJPdqx4eMA0GCSqGSIb3DQEBAQUABIIBAHziiY2W3efDGKwoBRYjPbAW/HKD
-# 776UCGBdyY1e1dV4191SJ0PXeoSg/7sR6cBHqks9Vr3LxZvXxpFGQ68N3OYs1eZ8
-# AGznWJ8tayMgEbG7+zatSOEmp86jZbkJkfzUGBwyvQcllV8FY6hP5mMLmRmCjc+/
-# XS6psr0SheGF8HoP64h+PSpwcJUJGO5CdkYKxqWwqhI0FmCXhyBtHOSav+oAboDA
-# JhowqEmqw85dvtm6mZZid85Iw4hEx5oz5pDe5nFGNXt0D602pmUkp6zyucogI7Y0
-# 4qfZZ/85voQbFqctHc8zGEc8z7njfEqZ0RwE3aZFiUA/wIXL1YTFl8UOooo=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFIskNRf2zOkLeJnP
+# F0ZfuM6dFO7wMA0GCSqGSIb3DQEBAQUABIIBABf2DKehamZ/RcMwbZdYPurzQ0tE
+# 0JnKjHi2OQtBkSJjFhQG0xdbOgzlvzh3bWbz5FX1TKFHM23QjHMYSl1SYs9gFC1X
+# gHDMUdE32KX1WFTafjTLTvNlB5Cv1imDuGNDchyOxM5ePRskkaR4oULgL4QVKBuX
+# mP2kEz8kDNyawD1MW3mYbwG/a49p3ggJ6b8sgzCfLg5xaT0Wrkkw0f0UVSZb+Bdh
+# NWHDnzcnZHTE5rVEzO10/aH7buFoTmYCb+WqgzT/pUruEntKC0EpU7H9pRsa65l1
+# POdOwTWPcTqDjsg43Uxyv0fSeqS7SEJqLscXP4rPpQ6feYqKYYAlykzwrXc=
 # SIG # End signature block

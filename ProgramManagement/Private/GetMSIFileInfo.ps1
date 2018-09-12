@@ -4,7 +4,7 @@ function GetMSIFileInfo {
     param(
         [parameter(Mandatory=$true)]
         [ValidateNotNullOrEmpty()]
-        [System.IO.FileInfo]$Path,
+        [System.IO.FileInfo]$MsiFileItem,
     
         [parameter(Mandatory=$true)]
         [ValidateNotNullOrEmpty()]
@@ -15,7 +15,7 @@ function GetMSIFileInfo {
         try {
             # Read property from MSI database
             $WindowsInstaller = New-Object -ComObject WindowsInstaller.Installer
-            $MSIDatabase = $WindowsInstaller.GetType().InvokeMember("OpenDatabase", "InvokeMethod", $null, $WindowsInstaller, @($Path.FullName, 0))
+            $MSIDatabase = $WindowsInstaller.GetType().InvokeMember("OpenDatabase", "InvokeMethod", $null, $WindowsInstaller, @($MsiFileItem.FullName, 0))
             $Query = "SELECT Value FROM Property WHERE Property = '$($Property)'"
             $View = $MSIDatabase.GetType().InvokeMember("OpenView", "InvokeMethod", $null, $MSIDatabase, ($Query))
             $View.GetType().InvokeMember("Execute", "InvokeMethod", $null, $View, $null)
@@ -45,8 +45,8 @@ function GetMSIFileInfo {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUHo53Puld1mVcrWWKOQbUVscu
-# ef2gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUf3z7fepBRidjhPvq2AuCoX2M
+# RtCgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -103,11 +103,11 @@ function GetMSIFileInfo {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFNo6i09eO+jA0Jje
-# MdH3WHf6tp5SMA0GCSqGSIb3DQEBAQUABIIBAILp/Jn7p9moB/gKKXI+zITra+u0
-# E6IEDufCGrjA3yK1LmMwwlpiIYer7Jm4x/yZQLqiZqkJPDVH+2B9rK/n/PjeqNgE
-# OZVGM37dsLLzlcEf6+zVoC7iW3VJvY2lRxTMZnI3PyRrwif+Wped9z/G3hgckDM2
-# IB7pnXDfCM5fWvqfZshtZxjHqKHLrrSfoQItSSyagGlexi/AWqgD+jRkUKUYx6m8
-# iQYpynpmfEWYf7A2guLqm3h3NGQP++fjZKVmBvslXLhISndXVPIgZoV8H3eX3r/A
-# cF/vCUkMPT8m/StaLj9A7Ys5Vy6J316zBpjhwu7vWbVv2vAukDJSbc0/IJI=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFNGacvdvEPlcVTOG
+# OvEG6LBxknXUMA0GCSqGSIb3DQEBAQUABIIBACk7mZxH0NEqVOnefpzCFwoZUqJm
+# 4/zFAEdglcjMBnvFXPiqobqpwpOZ1d0EZ6c73h8FJ1SuMQs9DY1LkWVB6VgJISE7
+# QLj0I6rDNENLV/phkqaBXDtGKBLBPfm3XYVNnKh7bC3VzFcG4GEoWlcG4EeE5TPP
+# uQk+Zt0mfYGwYHjd9maIfyjwMxxE6b2TeeKzp1h23v7tCrrgENAO6kuNySIwp+eD
+# +HYoBV/6D8VUHvEyezjEbMi7IqLxufJiiykDWyyXl4nRKEVW3N97jTpbzVzAFVYU
+# sFKs9UP6MKWl9CQRbxVyYI/Z3zjXhXatwTPYhb2Rnu1unufd3LOIWvO+Hxw=
 # SIG # End signature block

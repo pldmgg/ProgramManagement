@@ -92,7 +92,7 @@ function Get-AllPackageInfo {
         [array]$CheckInstalledPrograms = Get-InstalledProgramsFromRegistry -ProgramTitleSearchTerm $PNRegex
         $WindowsInstallerMSIs = Get-ChildItem -Path "C:\Windows\Installer" -File
         $RelevantMSIFiles = foreach ($FileItem in $WindowsInstallerMSIs) {
-            $MSIProductName = GetMSIFileInfo -Path $FileItem.FullName -Property ProductName -WarningAction SilentlyContinue
+            $MSIProductName = GetMSIFileInfo -Path $FileItem.FullName -Property ProductName -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
             if ($MSIProductName -match $PNRegex) {
                 [pscustomobject]@{
                     ProductName = $MSIProductName
@@ -115,8 +115,10 @@ function Get-AllPackageInfo {
 
             foreach ($Package in $PSGetInstalledPackageObjectsFinal) {
                 $RelevantMSIFile = $RelevantMSIFiles | Where-Object {$_.ProductName -eq $Package.Name}
-                $Package | Add-Member -MemberType NoteProperty -Name "MSIFileItem" -Value $RelevantMSIFile.FileItem
-                $Package | Add-Member -MemberType NoteProperty -Name "MSILastWriteTime" -Value $RelevantMSIFile.FileItem.LastWriteTime
+                if ($RelevantMSIFile) {
+                    $Package | Add-Member -MemberType NoteProperty -Name "MSIFileItem" -Value $RelevantMSIFile.FileItem
+                    $Package | Add-Member -MemberType NoteProperty -Name "MSILastWriteTime" -Value $RelevantMSIFile.FileItem.LastWriteTime
+                }
 
                 if ($Package.TagId -ne $null) {
                     $RegProperties = $CheckInstalledPrograms | Where-Object {$_.PSChildName -match $Package.TagId}
@@ -947,16 +949,6 @@ function Install-Program {
     $global:FunctionResult = "0"
     $MyFunctionsUrl = "https://raw.githubusercontent.com/pldmgg/misc-powershell/master/MyFunctions"
 
-    if ($PSVersionTable.PSEdition -ne "Core") {
-        $null = Install-PackageProvider -Name Nuget -Force -Confirm:$False
-        $null = Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-        $null = Install-PackageProvider -Name Chocolatey -Force -Confirm:$False
-        $null = Set-PackageSource -Name chocolatey -Trusted -Force
-    }
-    else {
-        $null = Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-    }
-
     if ($UpdatePackageManagement) {
         if (![bool]$(Get-Command Update-PackageManagement -ErrorAction SilentlyContinue)) {
             $UpdatePMFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Update-PackageManagement.ps1"
@@ -983,6 +975,23 @@ function Install-Program {
             $global:FunctionResult = "1"
             return
         }
+    }
+
+    try {
+        if ($PSVersionTable.PSEdition -ne "Core") {
+            $null = Install-PackageProvider -Name Nuget -Force -Confirm:$False
+            $null = Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+            $null = Install-PackageProvider -Name Chocolatey -Force -Confirm:$False
+            $null = Set-PackageSource -Name chocolatey -Trusted -Force
+        }
+        else {
+            $null = Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+        }
+    }
+    catch {
+        Write-Error $_
+        $global:FunctionResult = "1"
+        return
     }
 
     # Install chocolatey resources for PowerShellGet
@@ -3511,8 +3520,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU77H1rCIK9fwDNeFmwEvYuZ7b
-# Lb+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUWVCD9/1fRGUuUjAcyujET8PY
+# lHagggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -3569,11 +3578,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFKlPBZ9CLc8DZJwi
-# rgFd66rE60sdMA0GCSqGSIb3DQEBAQUABIIBAHlmhdp2i3GgDHR0N5+c5FKWnNfk
-# iaw2bogKxkI36bSHu7wsM3aFK2LO0CTm26bFccQFFfg08RSoEfRLdPWot62O1Z4s
-# VFO+oDargg1qXRqGjDAlXmviJ7RyAzLYT6BiIaRAPDiBeZTGCYhqjS51dv5O+RS8
-# xrjQHU+PPQpr+CnQ4gka0PDi8wVxdq5dn2nrrxkgzRmFhNt6qfbaYBAGKuO1tLB6
-# PxdN9+Hw+3m89cFhxmwnMwnYbJx/i2jev1O0az0WMOV9tkAYHNNcSGdYtdtxlYoO
-# eCSCnBuOKA9DlPj64YQzXsR2rgvFuLyfyKf7w8XdcnrM0aCrfA9xTCjl+x0=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFI0zkYxXs3RBMaVU
+# 4dOJMnQkCTxMMA0GCSqGSIb3DQEBAQUABIIBAGZMd5X8CiwXJJyVtMwyI5Ct/4os
+# mixve13hR05wS4IOYlqTq0uMtTPdRF6GhHxFalRs/uIpLK1JQsGgnygksMfPtmAQ
+# IDIMs/CfzEUrQUYmKsq4HKUV+oQ66jSzKrvl8jsmN54H+HwiqVDDwlKaYIUUk1tp
+# 1JvWPjdfADJvu8/q90FlAQvIKxpyeyRINjqt8D8PpCcKcPDJJ/GHAUV3nJWXG0hM
+# PgMSNpyJ4qxQ7hUKc6Jnd4WAfl/4fw1qpRKhr+43TAgI23Nvg3cPGYNJaLdmkyp9
+# 9JIti1Ht7KvlP4MLex3DgeZTm/qWG8fvf741Q+ZnYoJ4GCjEyeGP9Vdp2nU=
 # SIG # End signature block

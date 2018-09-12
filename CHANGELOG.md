@@ -1,5 +1,9 @@
 # Change log
 
+## 1.0.9 (September 12, 2018)
+
+- Minor updates to Install-Program and GetMSIFileInfo
+
 ## 1.0.8 (September 11, 2018)
 
 - Updated logic to handle situations where PowerShellGet / PackageManagement completes a dirty install (installs program and dependencies, but throws one or more errors along the way)

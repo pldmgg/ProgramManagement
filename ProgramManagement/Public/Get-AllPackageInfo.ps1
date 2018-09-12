@@ -53,7 +53,7 @@ function Get-AllPackageInfo {
         [array]$CheckInstalledPrograms = Get-InstalledProgramsFromRegistry -ProgramTitleSearchTerm $PNRegex
         $WindowsInstallerMSIs = Get-ChildItem -Path "C:\Windows\Installer" -File
         $RelevantMSIFiles = foreach ($FileItem in $WindowsInstallerMSIs) {
-            $MSIProductName = GetMSIFileInfo -Path $FileItem.FullName -Property ProductName -WarningAction SilentlyContinue
+            $MSIProductName = GetMSIFileInfo -Path $FileItem.FullName -Property ProductName -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
             if ($MSIProductName -match $PNRegex) {
                 [pscustomobject]@{
                     ProductName = $MSIProductName
@@ -76,8 +76,10 @@ function Get-AllPackageInfo {
 
             foreach ($Package in $PSGetInstalledPackageObjectsFinal) {
                 $RelevantMSIFile = $RelevantMSIFiles | Where-Object {$_.ProductName -eq $Package.Name}
-                $Package | Add-Member -MemberType NoteProperty -Name "MSIFileItem" -Value $RelevantMSIFile.FileItem
-                $Package | Add-Member -MemberType NoteProperty -Name "MSILastWriteTime" -Value $RelevantMSIFile.FileItem.LastWriteTime
+                if ($RelevantMSIFile) {
+                    $Package | Add-Member -MemberType NoteProperty -Name "MSIFileItem" -Value $RelevantMSIFile.FileItem
+                    $Package | Add-Member -MemberType NoteProperty -Name "MSILastWriteTime" -Value $RelevantMSIFile.FileItem.LastWriteTime
+                }
 
                 if ($Package.TagId -ne $null) {
                     $RegProperties = $CheckInstalledPrograms | Where-Object {$_.PSChildName -match $Package.TagId}
@@ -141,8 +143,8 @@ function Get-AllPackageInfo {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQURvliFTUFdOqikIqloNSf6ltB
-# cEGgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUUWNjjUbv4gaYoeb95NIS/pJt
+# EH+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -199,11 +201,11 @@ function Get-AllPackageInfo {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFO0h7+Gl0g+Dhd+x
-# +gg17apO8eDBMA0GCSqGSIb3DQEBAQUABIIBAKFQrtXhK3upGbEEV3Shi53gJVG6
-# IoszQrP5uP/zJ2B5bfOeDV1bAAdcBwb1NWWgfYQGxcIPKbmVHP+JY4N9vDNUa9/u
-# 6lfEcNcWS0z1w3seIBqMkbzY67SfWNrtzUqsLywp0xtVEDOdz4Gmj4L8q3ZDrt1W
-# FPb1baXuMdG3GshJg0oraLOTqz13nPJ76JgcYg5e+citqSCZlWUcc8lPfWKGQ6pd
-# wUdYb0al0yyaX94AUgiRROT5UPQqb3nSq5TPOX+VyvQ2x530u6gC09Zscjju/A+3
-# XRQr4wbHdUnZXqLgyOMoV8fuNdApRn4gVU7VGeR8jiD5Q80oYs1O/bN5bvc=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFHQg1J0WznFvgv7T
+# JTzCsaeAjJqDMA0GCSqGSIb3DQEBAQUABIIBACeeD/8tTkh+lEWIIRHVmDaYYj2I
+# s2lH8r3O3rru/lgQ0bS8LP6eBQyByCymDxW7DHrR2iakfWQiFNNb4kDbnRgb9B9/
+# Th+OwNVSjcd1lhql1yxOr1WuoXoQLiO3K4xKNRjoemUAXYplqge54LsGukBr8pFN
+# gENhfoVYmX/uqUWVFvdqLFnGm6hFUcklQ4AffrxnNAprFXUIBaVd31Zt+Qw8bRpB
+# C/AjhXkikp1X5xAC6t5Yg5tMUNdG/KjayIl/56YUf/ZCN5tH9MpDOLPlXU4ep4lH
+# JVspx4/RPvSXKuQABrOL+GoinDMotrOSJ0gtHCCBio84ytWMRCEswyRhqUo=
 # SIG # End signature block
