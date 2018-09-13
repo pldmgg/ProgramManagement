@@ -128,6 +128,29 @@ function Update-ChocolateyEnv {
         }
     }
 
+    # Make sure we have ChocolateyInstall and ChocolateyPath environment variables are set
+    $env:ChocolateyInstall = "C:\ProgramData\chocolatey"
+    $env:ChocolateyPath = $env:ChocolateyInstall
+    $null = [Environment]::SetEnvironmentVariable("ChocolateyInstall", $env:ChocolateyInstall, "User")
+    $null = [Environment]::SetEnvironmentVariable("ChocolateyInstall", $env:ChocolateyInstall, "Machine")
+    $null = [Environment]::SetEnvironmentVariable("ChocolateyPath", $env:ChocolateyPath, "User")
+    $null = [Environment]::SetEnvironmentVariable("ChocolateyPath", $env:ChocolateyPath, "Machine")
+
+    # Ensure that we have an "extensions" folder under $env:ProgramData\chocolatey
+    if (Test-Path $env:ChocolateyPath) {
+        $ChocoExtensionsFolder = "$env:ProgramData\chocolatey\extensions"
+        if (!$(Test-Path $ChocoExtensionsFolder)) {
+            $null = New-Item -ItemType Directory -Path $ChocoExtensionsFolder
+        }
+        $ExtensionModules = Get-ChildItem "$env:ProgramData\chocolatey\lib" -Directory | Where-Object {$_.Name -match "\.extension\."}
+        foreach ($ModuleDirItem in $ExtensionModules) {
+            if (Test-Path "$ChocoExtensionsFolder\$($ModuleDirItem.Name)") {
+                $null = Remove-Item -Path "$ChocoExtensionsFolder\$($ModuleDirItem.Name)" -Recurse -Force
+            }
+            $null = Copy-Item -Path $ModuleDirItem.FullName -Destination $ChocoExtensionsFolder -Recurse -Force
+        }
+    }
+
     $UpdatedEnvPath
 
     ##### END Main Body #####
@@ -137,8 +160,8 @@ function Update-ChocolateyEnv {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU05SwMnGBzxBy5ge67SPA1ocv
-# KQigggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUFfZylP1+5hjOORdDj4E2/jG5
+# dkigggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -195,11 +218,11 @@ function Update-ChocolateyEnv {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFHPX4lL9yzwv534T
-# L3K56k6cnkOWMA0GCSqGSIb3DQEBAQUABIIBAG1yCsfcyeCaFBR1MwzBT8/fHJes
-# H7CrACoeU2akeq52BCmLWYlWMsPGtkXV1TCwUZqv9AWfZmbsEgw4dnq6tlNQY1oU
-# h44ZaInQlUJQ++HnjO+XgK8WnWO3uL9qfFE47aL0um6hPONtO8Kg0aq8ZiN9zRHJ
-# 2koN9d7CLHDkscbBv50lHR8E2W7ysuuf3mVHzW3PoQo9Q/Wkj8il5o7prGNCMJq5
-# rsiHy6vJ3TfYJlo8EqjmkvJCWqD0f314EypE8f8vZU2f2Bm2n+hRl+un2y2x0Bu4
-# DGt9OD7Vi6yhZQDpeimBcmbA/rvEAJudqzFo4jtWFLa8npx704mfsiM43ns=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFHchyuQy9yA9ywix
+# WSbSABb/PgeHMA0GCSqGSIb3DQEBAQUABIIBAIto5sseLv6lsZ6icAzVt43J+4Aq
+# wt7jNsv+rOYdJVin1ScrKscHYz5OA3bp4JPgaZlcsFUmIWgi/gUjPs7F9AXTy3I4
+# X81MT1jb/or7GR967qahzIlPG/lLye2ze7Z5Qu08aGdwyVnSTXCYqiwOOqMUUlMT
+# 3+NNwBV/iV2Xz4e5LUaul1xfUhH0zw2KeGI/almN/3Jn6zt29wAIa2+Ppx53IVhJ
+# UrnuHr3Xz6Nf3UMNaMQYqkYAY8U4r1VNsT1HUsd2TqfpT/NaZe7tEZR86LWHXme7
+# 1jO1FNJMeX3+lAI4OR+feLimH6Mo2NvuQwRN8tblnz+LatkGow8Cr1HsyEE=
 # SIG # End signature block

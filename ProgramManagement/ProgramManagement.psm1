@@ -92,7 +92,7 @@ function Get-AllPackageInfo {
         [array]$CheckInstalledPrograms = Get-InstalledProgramsFromRegistry -ProgramTitleSearchTerm $PNRegex
         $WindowsInstallerMSIs = Get-ChildItem -Path "C:\Windows\Installer" -File
         $RelevantMSIFiles = foreach ($FileItem in $WindowsInstallerMSIs) {
-            $MSIProductName = GetMSIFileInfo -Path $FileItem.FullName -Property ProductName -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
+            $MSIProductName = GetMSIFileInfo -MsiFileItem $FileItem -Property ProductName -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
             if ($MSIProductName -match $PNRegex) {
                 [pscustomobject]@{
                     ProductName = $MSIProductName
@@ -583,6 +583,7 @@ function Install-ChocolateyCmdLine {
 
             try {
                 cup chocolatey-core.extension -y
+                cup chocolatey-windowsupdate.extension -y
             }
             catch {
                 Write-Error "Installation of chocolatey-core.extension via the Chocolatey CmdLine failed! Halting!"
@@ -2953,6 +2954,29 @@ function Update-ChocolateyEnv {
         }
     }
 
+    # Make sure we have ChocolateyInstall and ChocolateyPath environment variables are set
+    $env:ChocolateyInstall = "C:\ProgramData\chocolatey"
+    $env:ChocolateyPath = $env:ChocolateyInstall
+    $null = [Environment]::SetEnvironmentVariable("ChocolateyInstall", $env:ChocolateyInstall, "User")
+    $null = [Environment]::SetEnvironmentVariable("ChocolateyInstall", $env:ChocolateyInstall, "Machine")
+    $null = [Environment]::SetEnvironmentVariable("ChocolateyPath", $env:ChocolateyPath, "User")
+    $null = [Environment]::SetEnvironmentVariable("ChocolateyPath", $env:ChocolateyPath, "Machine")
+
+    # Ensure that we have an "extensions" folder under $env:ProgramData\chocolatey
+    if (Test-Path $env:ChocolateyPath) {
+        $ChocoExtensionsFolder = "$env:ProgramData\chocolatey\extensions"
+        if (!$(Test-Path $ChocoExtensionsFolder)) {
+            $null = New-Item -ItemType Directory -Path $ChocoExtensionsFolder
+        }
+        $ExtensionModules = Get-ChildItem "$env:ProgramData\chocolatey\lib" -Directory | Where-Object {$_.Name -match "\.extension\."}
+        foreach ($ModuleDirItem in $ExtensionModules) {
+            if (Test-Path "$ChocoExtensionsFolder\$($ModuleDirItem.Name)") {
+                $null = Remove-Item -Path "$ChocoExtensionsFolder\$($ModuleDirItem.Name)" -Recurse -Force
+            }
+            $null = Copy-Item -Path $ModuleDirItem.FullName -Destination $ChocoExtensionsFolder -Recurse -Force
+        }
+    }
+
     $UpdatedEnvPath
 
     ##### END Main Body #####
@@ -3520,8 +3544,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUWVCD9/1fRGUuUjAcyujET8PY
-# lHagggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUHtkG9ltxhihd3gN9gR6mwEr7
+# sYWgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -3578,11 +3602,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFI0zkYxXs3RBMaVU
-# 4dOJMnQkCTxMMA0GCSqGSIb3DQEBAQUABIIBAGZMd5X8CiwXJJyVtMwyI5Ct/4os
-# mixve13hR05wS4IOYlqTq0uMtTPdRF6GhHxFalRs/uIpLK1JQsGgnygksMfPtmAQ
-# IDIMs/CfzEUrQUYmKsq4HKUV+oQ66jSzKrvl8jsmN54H+HwiqVDDwlKaYIUUk1tp
-# 1JvWPjdfADJvu8/q90FlAQvIKxpyeyRINjqt8D8PpCcKcPDJJ/GHAUV3nJWXG0hM
-# PgMSNpyJ4qxQ7hUKc6Jnd4WAfl/4fw1qpRKhr+43TAgI23Nvg3cPGYNJaLdmkyp9
-# 9JIti1Ht7KvlP4MLex3DgeZTm/qWG8fvf741Q+ZnYoJ4GCjEyeGP9Vdp2nU=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFDMf+JaDYFlPAqaa
+# nB2jxYEBKxu/MA0GCSqGSIb3DQEBAQUABIIBAHcneUdTeSx4Eoc7jafF1LJs2knc
+# 7O7mwJwQxRaOcSILB0I5RBERXxkazmCQv+8Y77/RWFH+YAfw1gPXl07u9uv3V7Vp
+# /8yB926+dYVgDBChDOBP00+wW6KFwLYYNXESWV+R24FlvYsVuUQwfvTUYWywOQ0N
+# Dp6rpLCNlHjvqAZIRwQEaaDpgPb7TIsGAabQ6tUhP8cTsMAyj6Yt+xxXxL95FR7D
+# YeA3euvofopIzbsOmadkrXBBzrk6aMw6DrPi8jP4Wna2sYBsXWCYR+NsIkxoLw1M
+# QJxB0LQ6WMsumtTQgBftyaZcQfKOsz2hb0tjinfqT1eaaCMhwljLzLUS0U4=
 # SIG # End signature block

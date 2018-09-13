@@ -241,6 +241,7 @@ function Install-ChocolateyCmdLine {
 
             try {
                 cup chocolatey-core.extension -y
+                cup chocolatey-windowsupdate.extension -y
             }
             catch {
                 Write-Error "Installation of chocolatey-core.extension via the Chocolatey CmdLine failed! Halting!"
@@ -288,8 +289,8 @@ function Install-ChocolateyCmdLine {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU0u6Ecsv+056HyA8JTD2Impd4
-# dj2gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU/rlWZf2LVH/mGTPuvQBRe4vq
+# XAegggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -346,11 +347,11 @@ function Install-ChocolateyCmdLine {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFKNCm8Z1PFBqlx+k
-# Ppcg1KQSexYnMA0GCSqGSIb3DQEBAQUABIIBAEOm5PZCDRaB27d4w2zsE3QtL4zf
-# 3kmNtvSGJ6bg8EVKPQYCsm+PKiRceZr3Ec09Ib5hQuBWlRsu83Sh59DBfdaaUuWF
-# IOqRy8k+6ULOiS9BJxuOyePA6SULpayTE95KjHvvYL6z16g93Ds3ffg3rjie0UKI
-# +IFWKlJ/pLvuMACyfugqBaG0nNHE2x9pUiDbvihOuB+uNay2skgBvpNOHpJP9SUJ
-# 9SyEBkQhxreN1Hux0E7hM+6AKbd3kOYUJ7wXHjEYSn1/CN0kROxHLGcWuaqZKYUV
-# O9eExGpUYqFO6fOs9YrS8es9O1L86wnA4vqAbTjGax2LV8GmXHA7t/FBGQA=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFJfVVV2z5/7oN1h2
+# KN1ZQIQhJQ15MA0GCSqGSIb3DQEBAQUABIIBAFcjrzrXM99dnjdK1WraCDwYT4sd
+# CgNlEfSlUwJfF61vFvjow8s/h1rRdum+CP1Kaj1IE3eCyzo4m18RLX6Gw3leVJ1L
+# GMlArkCYMwmP/WyZ9ZrOvGQ6ABg5i265Oh/AkRqLM2WeYLyBmuvpsZpJpnUocQz9
+# GaxMa81zpMaTMdBrpRFiRY7cGYUBQJUG4BXs5L/Sp+bgblzlUFsZ5g2Fdsetj4J8
+# itt8eBaaVbVah9loeJqmPcMBHrbvV4L1Tkv5sCz3xKJskUQKF+m3kAod/gGmV2a5
+# NYhIKZ6k/Emj2W0UKhSSK7+ooMwiG5PAh91W+JTt+zAtp5NjyMPoMdCbkuY=
 # SIG # End signature block

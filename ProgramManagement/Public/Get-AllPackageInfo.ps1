@@ -53,7 +53,7 @@ function Get-AllPackageInfo {
         [array]$CheckInstalledPrograms = Get-InstalledProgramsFromRegistry -ProgramTitleSearchTerm $PNRegex
         $WindowsInstallerMSIs = Get-ChildItem -Path "C:\Windows\Installer" -File
         $RelevantMSIFiles = foreach ($FileItem in $WindowsInstallerMSIs) {
-            $MSIProductName = GetMSIFileInfo -Path $FileItem.FullName -Property ProductName -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
+            $MSIProductName = GetMSIFileInfo -MsiFileItem $FileItem -Property ProductName -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
             if ($MSIProductName -match $PNRegex) {
                 [pscustomobject]@{
                     ProductName = $MSIProductName
@@ -143,8 +143,8 @@ function Get-AllPackageInfo {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUUWNjjUbv4gaYoeb95NIS/pJt
-# EH+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUJ+GeajFLqPtatW+JOlYRXwvg
+# V8Cgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -201,11 +201,11 @@ function Get-AllPackageInfo {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFHQg1J0WznFvgv7T
-# JTzCsaeAjJqDMA0GCSqGSIb3DQEBAQUABIIBACeeD/8tTkh+lEWIIRHVmDaYYj2I
-# s2lH8r3O3rru/lgQ0bS8LP6eBQyByCymDxW7DHrR2iakfWQiFNNb4kDbnRgb9B9/
-# Th+OwNVSjcd1lhql1yxOr1WuoXoQLiO3K4xKNRjoemUAXYplqge54LsGukBr8pFN
-# gENhfoVYmX/uqUWVFvdqLFnGm6hFUcklQ4AffrxnNAprFXUIBaVd31Zt+Qw8bRpB
-# C/AjhXkikp1X5xAC6t5Yg5tMUNdG/KjayIl/56YUf/ZCN5tH9MpDOLPlXU4ep4lH
-# JVspx4/RPvSXKuQABrOL+GoinDMotrOSJ0gtHCCBio84ytWMRCEswyRhqUo=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFIhvfHiAd8cs0Xtz
+# 904rdBiu9Hi4MA0GCSqGSIb3DQEBAQUABIIBACL1vud5vUaa3XSAlEAP7KuJAStE
+# uOUvmyG18dIKul2DrpcIjB9ywPbN+GM8EeELOsc3R3DwRvukUWxjmeSs6rUau6V6
+# Pg14wGlFf90vB7vB5fA/F0OQUpi3juraWfAKM6+CYMx/USag0igd6I+kUDZ/uCa4
+# Sb8jBnY5T3yDyu/KYMoD0SWWzIWKEzQux6dJ17BK5i3hsHAKDimEm4PYZ2PaoiAp
+# Cg8pKPsGrHZ5elTq+ko2Fh/y91HVsjFzWb1E4BVzymZKsqAUhgY0JAVy6VROyneJ
+# gT7UMy5Vu5yw2RQoRfHzUP2bGOT6kDKM8hOUMTGwCxBLTqRONO5cH7LqdlA=
 # SIG # End signature block

@@ -1,5 +1,9 @@
 # Change log
 
+## 1.1.0 (September 13, 2018)
+
+- Fixed issues with Chocolatey being unable to find Chocolatey Extensions Modules on the filesystem
+
 ## 1.0.9 (September 12, 2018)
 
 - Minor updates to Install-Program and GetMSIFileInfo
