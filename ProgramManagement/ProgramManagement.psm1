@@ -1703,6 +1703,8 @@ function Install-Program {
                                     $InstallProgramSplatParams.Add("ErrorAction","Stop")
                                 }
                                 $PMInstall = $False
+
+                                #$InstallProgramSplatParams | Export-CliXml "$HOME\InstallProgramSplatParams.xml"
                                 
                                 try {
                                     Install-Program @InstallProgramSplatParams
@@ -3544,8 +3546,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUHtkG9ltxhihd3gN9gR6mwEr7
-# sYWgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU84h14fluHUZk7FUn4Yk7u4hR
+# gf+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -3602,11 +3604,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFDMf+JaDYFlPAqaa
-# nB2jxYEBKxu/MA0GCSqGSIb3DQEBAQUABIIBAHcneUdTeSx4Eoc7jafF1LJs2knc
-# 7O7mwJwQxRaOcSILB0I5RBERXxkazmCQv+8Y77/RWFH+YAfw1gPXl07u9uv3V7Vp
-# /8yB926+dYVgDBChDOBP00+wW6KFwLYYNXESWV+R24FlvYsVuUQwfvTUYWywOQ0N
-# Dp6rpLCNlHjvqAZIRwQEaaDpgPb7TIsGAabQ6tUhP8cTsMAyj6Yt+xxXxL95FR7D
-# YeA3euvofopIzbsOmadkrXBBzrk6aMw6DrPi8jP4Wna2sYBsXWCYR+NsIkxoLw1M
-# QJxB0LQ6WMsumtTQgBftyaZcQfKOsz2hb0tjinfqT1eaaCMhwljLzLUS0U4=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFO58R7igN3N/7UFe
+# K9nkprQaI3sUMA0GCSqGSIb3DQEBAQUABIIBABOSWsrvAFKhfzSdHhFVxTInqWgo
+# t1THzoUbM248c0rGIkrWKJFEMkEgfvhw6H1nmgP+XzRFcbeOL2ALN9Ryo8fypnxP
+# f6IjS9sDmp+8onbl/TGNFB6+T3cqYTXq5+B+grXmALPzEghZMBt3Q3/jkysODToE
+# 2n7/bu2ZrMrcuvVrNf5bEEh/4lCPkSEFCXubtmSNb2Cp/rPwm8l9fM5X9EBPg3Zo
+# yjK6wjio9mroBto2dJO7Ui9xgIRx0D2jEdC+tcvegq22bsUIx40bgSDX0RfePT34
+# lIZv2hSDx8tNfcYwlymtI/2/xdSsv6nZLxkV8/qpr0+JIfOxDHQXT14KSV8=
 # SIG # End signature block

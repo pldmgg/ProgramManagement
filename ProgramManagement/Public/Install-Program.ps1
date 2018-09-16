@@ -1072,6 +1072,8 @@ function Install-Program {
                                     $InstallProgramSplatParams.Add("ErrorAction","Stop")
                                 }
                                 $PMInstall = $False
+
+                                #$InstallProgramSplatParams | Export-CliXml "$HOME\InstallProgramSplatParams.xml"
                                 
                                 try {
                                     Install-Program @InstallProgramSplatParams
@@ -1278,8 +1280,8 @@ function Install-Program {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUFaGw6Xn6PZK3aUXDdSJpS+u9
-# 7/Wgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUH/jr8me/LfwyJR+OwbYG0exq
+# aaOgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -1336,11 +1338,11 @@ function Install-Program {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFIskNRf2zOkLeJnP
-# F0ZfuM6dFO7wMA0GCSqGSIb3DQEBAQUABIIBABf2DKehamZ/RcMwbZdYPurzQ0tE
-# 0JnKjHi2OQtBkSJjFhQG0xdbOgzlvzh3bWbz5FX1TKFHM23QjHMYSl1SYs9gFC1X
-# gHDMUdE32KX1WFTafjTLTvNlB5Cv1imDuGNDchyOxM5ePRskkaR4oULgL4QVKBuX
-# mP2kEz8kDNyawD1MW3mYbwG/a49p3ggJ6b8sgzCfLg5xaT0Wrkkw0f0UVSZb+Bdh
-# NWHDnzcnZHTE5rVEzO10/aH7buFoTmYCb+WqgzT/pUruEntKC0EpU7H9pRsa65l1
-# POdOwTWPcTqDjsg43Uxyv0fSeqS7SEJqLscXP4rPpQ6feYqKYYAlykzwrXc=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFC9X5aQevGdoGjpR
+# X/LQho0WeuNmMA0GCSqGSIb3DQEBAQUABIIBAF1jwvuTxqh8IxIIXYYzBaP0xrWK
+# NNG4AfdnekGQB4jdIoO/TIwW7mx70LE/weW8kRUPXrtbDESKoX9iRZXRe/OTFWms
+# 5TmQfAKuhkjxnCtg2xOQphRnwQ/zd0d95uQzz0rZuNzifNmO6zf0qVqdkE7Zeohp
+# pavUgl63ACPtzUPNhokeHFgWqAv1ETmD46TsI0TowVv5BhmPCrOooYQpDbX4b8SX
+# 0kT3svGgn+QsnDlI32N+3Ap9Bq7SoY8HYUI02SdZobpKEfapBBC6gcspm3K2r65F
+# DQd2d5SOoWAX9QOu46SNvYc3JegwkndUe2n+FBASbmuiGu2O1YpLCBFmN7k=
 # SIG # End signature block
