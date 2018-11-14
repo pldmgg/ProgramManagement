@@ -158,6 +158,43 @@ Task Test -Depends Compile  {
     # Gather test results. Store them in a variable and file
     $TestResults = Invoke-Pester @PesterSplatParams
 
+    # Make sure Authenticode Signature has been removed
+    $RemoveSignatureFilePath = $(Resolve-Path "$PSScriptRoot\*Help*\Remove-Signature.ps1").Path
+    $RemoveSignatureFilePathRegex = [regex]::Escape($RemoveSignatureFilePath)
+    . $RemoveSignatureFilePath
+    if (![bool]$(Get-Item Function:\Remove-Signature)) {
+        Write-Error "Problem dot sourcing the Remove-Signature function! Halting!"
+        $global:FunctionResult = "1"
+        return
+    }
+    [System.Collections.ArrayList][array]$HelperFilestoSign = Get-ChildItem $(Resolve-Path "$PSScriptRoot\*Help*\").Path -Recurse -File | Where-Object {
+        $_.Extension -match '\.ps1|\.psm1|\.psd1|\.ps1xml' -and $_.Name -ne "Remove-Signature.ps1"
+    }
+    foreach ($FileItem in $HelperFilestoSign) {
+        if ($(Get-AuthenticodeSignature -FilePath $FileItem.FullName) -ne "NotSigned") {
+            Write-Host "Removing signature from $($FileItem.FullName)..."
+            Remove-Signature -FilePath $FileItem.FullName
+        }
+    }
+
+    $HelperFilesToSignNameRegex = $HelperFilestoSign.Name | foreach {[regex]::Escape($_)}
+
+    [System.Collections.ArrayList][array]$FilesToSign = Get-ChildItem $env:BHProjectPath -Recurse -File | Where-Object {
+        $_.Extension -match '\.ps1|\.psm1|\.psd1|\.ps1xml' -and
+        $_.Name -notmatch "^build\.ps1$" -and
+        $_.Name -notmatch $($HelperFilesToSignNameRegex -join '|') -and
+        $_.Name -notmatch $RemoveSignatureFilePathRegex -and
+        $_.FullName -notmatch "\\Pages\\Dynamic|\\Pages\\Static" -and
+        $_.Name -notmatch "psake\.ps1" -and
+        $_.Name -notmatch "Tests\.ps1"
+    }
+    foreach ($FileItem in $FilestoSign) {
+        if ($(Get-AuthenticodeSignature -FilePath $FileItem.FullName) -ne "NotSigned") {
+            Write-Host "Removing signature from $($FileItem.FullName)..."
+            Remove-Signature -FilePath $FileItem.FullName
+        }
+    }
+
     # In Appveyor?  Upload our tests! #Abstract this into a function?
     if ($env:BHBuildSystem -eq 'AppVeyor') {
         (New-Object 'System.Net.WebClient').UploadFile(
@@ -211,8 +248,8 @@ Task Deploy -Depends Build {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUSuUv0rA0c6kQ2L8ilvMzymUr
-# psegggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUcNkh0MFVxWcldcpFN6/OwAEv
+# FH+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -269,11 +306,11 @@ Task Deploy -Depends Build {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFNG4BKmzUk08wXbR
-# cNiy27KsQAEjMA0GCSqGSIb3DQEBAQUABIIBAJSZ6I06pWAwgjnnnp7hK9DM7o24
-# n4CxtkmZwe/BgvQs4v9vnuOqg1LxCGJu0iJYmnUu5OloMpY/VStOLBFGMQfniI9u
-# +Vx3nG0eUew1rpd5rdLsaIo/U7jDUmt5np9GwwZ6q80NMAZ9rfvTq2ZeU7PHY/8V
-# BW0Nk2JpQhZKibOu+aLlzX2EsuotdTSjs0izb/EBbX3WBtp03jB8es3ws6YlkTuj
-# VvJtWjcjhLP9oH3tcyk0qpBe5/zYYqf1ZeLfEM+eig+S/7eWDOQ8xqcN8Z5dJa5L
-# ZrbYlryQZqb8MmOQOwwikj44z2bbLS6aMdI/RoRlP+nsFvZ8+Fkf/mu9svU=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFD5Dqn5tXu7LIUih
+# jzzkmAhDmOblMA0GCSqGSIb3DQEBAQUABIIBAF++eHMtUtOKc9co3CpbIrYgZKvU
+# Hritvz2Y9Q4jkxmi3y5qYI+C/q0G46GjBFNTfTuukt89YuBCOFiISErbMzrasSlT
+# /KPhIZI59i0NmmHtz2KjfiGujUO/SHFsZXwZtwrH2qwAcw6mAjzQM+KdjUpDaE7a
+# H7oAEBGLbwdGUrm8H3weQ8r5S53OOklEnHscLiVjKN73U2DOdMwueMWbtkD+FE26
+# GQp6jFU1zh8cBaRY4rWsMvw0boMqCy9OBdsVWfycEzx1oY2NrS8nvd6Vkw7OrXDV
+# 63SRRG1ipIiIC6MrCfgLBz6TjU+b5uz/U4rZvEYd3gPjO350S4gh+8UEx1w=
 # SIG # End signature block

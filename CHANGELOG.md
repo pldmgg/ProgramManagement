@@ -1,5 +1,9 @@
 # Change log
 
+## 1.1.2 (November 14, 2018)
+
+- Fix Authenticode Signature Attempt 1
+
 ## 1.1.1 (September 16, 2018)
 
 - Minor updates to build.
