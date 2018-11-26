@@ -996,14 +996,16 @@ function Install-Program {
     }
 
     # Install chocolatey resources for PowerShellGet
-    try {
-        $ChocoResourcePackageNames = @("chocolatey-core.extension","chocolatey-windowsupdate.extension")
-        foreach ($ChocoResourcePackageName in $ChocoResourcePackageNames) {
-            $null = Install-Package $ChocoResourcePackageName -ProviderName Chocolatey -Force
+    if ($PSVersionTable.PSEdition -ne "Core") {
+        try {
+            $ChocoResourcePackageNames = @("chocolatey-core.extension","chocolatey-windowsupdate.extension")
+            foreach ($ChocoResourcePackageName in $ChocoResourcePackageNames) {
+                $null = Install-Package $ChocoResourcePackageName -ProviderName Chocolatey -Force -ErrorAction Stop
+            }
         }
-    }
-    catch {
-        Write-Warning "Unable to install PowerShellGet package $ChocoResourcePackageName ..."
+        catch {
+            Write-Warning "Unable to install PowerShellGet package $ChocoResourcePackageName ..."
+        }
     }
 
     if ($UseChocolateyCmdLine -or $(!$UsePowerShellGet -and !$UseChocolateyCmdLine)) {
@@ -1284,8 +1286,8 @@ function Install-Program {
             }
 
             # Make sure you can reach the Chocolatey Repo
-            if ($(Invoke-WebRequest -Uri 'http://chocolatey.org/api/v2').StatusCode -ne 200) {
-                Write-Error "Unable to reach the Chocolatey Package Repo at 'http://chocolatey.org/api/v2'! Halting!"
+            if ($(Invoke-WebRequest -Uri 'http://chocolatey.org/api/v2/').StatusCode -ne 200) {
+                Write-Error "Unable to reach the Chocolatey Package Repo at 'http://chocolatey.org/api/v2/'! Halting!"
                 $global:FunctionResult = "1"
                 return
             }
@@ -3546,8 +3548,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUNYIjLSrv1j0nAoxSl91KaXPV
-# VVOgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU6LQZhdwjpjPKZmYRQArvaXwk
+# y9Kgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -3604,11 +3606,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFCLgUS2RLXRiXktj
-# 2rS8+MpLzMEdMA0GCSqGSIb3DQEBAQUABIIBAEpYaP+lkQlgXB3wVCYGsaxtEBJ4
-# O268W0zjPwdiyh+yVFrnBf2S9mq80lK7VYl3DL4F0joyyRHK+sxph9pp0otYgbmM
-# dXixzYrH8JAnxKqYienglcPQcMOzq45ruAu+vj9TH8KCcPI/XhUmGixU69xtxbdJ
-# 50EFKWlPQ8+JuHidho2QAKDtaoNoo5Oe5/KUs/9BNG3N56zQUX9QXTfIvE1aQLvG
-# o88bZSVXeGFTqz1yCj8x/s4ykHaZhhwqO0/u0kFYtemem+sz8IjdWu+NU2LOYdYY
-# g637uwqPG7bIW2S8LTWUtAx18+uPYEvkzM3BAFoDcBpHsFbCTfWbg/P/Sek=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFP00LVV17M+wzgB/
+# puG5X/a+Or/6MA0GCSqGSIb3DQEBAQUABIIBAGjUz+bceJ2eZO/tX6h4u1ygNF02
+# KdqonMqWfoj0SqaooAGbEJ/S4K9QVz+rehrxww5e7KQn73L2WxsvC9qlMVpFkJ2h
+# sfBC1czPO0AI0xyEpw8CFwV2hz7xuyiUsh6hZoqSesEI0Cl9rNmbs3tesdR/SfNg
+# yta5qLZ3asx+rpDmrdP29eWrAIYMCtDS5463sZT8yExIrIAO99MuyJJugbnXM/K4
+# tIT7tocJOWqfKoqAn6rCqumP9vs/Ppc9qJY1FjYDKZw9WIQixMCXj277+s3EAh+h
+# iNIRUuGOgtxoFvsQYWwbOtVgpnuGn2vSRgyZ01m5CRCQaypQA32RJg1pFEA=
 # SIG # End signature block
