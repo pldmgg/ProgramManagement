@@ -69,9 +69,9 @@ PowerShellVersion = '5.1'
 # NestedModules = @()
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-FunctionsToExport = 'Get-AllPackageInfo','Get-InstalledProgramsFromRegistry','Install-ChocolateyCmdLine', 
-               'Install-Program','New-Runspace','Uninstall-Program','Update-ChocolateyEnv',
-               'Update-PackageManagement'
+FunctionsToExport = 'Get-AllAvailablePackages','Get-AllPackageInfo','Get-InstalledProgramsFromRegistry',
+                    'Install-ChocolateyCmdLine', 'Install-Program','New-Runspace','Uninstall-Program',
+                    'Update-ChocolateyEnv','Update-PackageManagement'
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
 CmdletsToExport = '*'
@@ -126,8 +126,8 @@ HelpInfoURI = 'https://github.com/pldmgg/ProgramManagement'
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUhZBD243ZHBhhzEPjOs5yFgBt
-# iXugggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUFJ2suWtRS2g9XucGFSye3ClE
+# yYygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -184,11 +184,11 @@ HelpInfoURI = 'https://github.com/pldmgg/ProgramManagement'
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFOKiTmW8mSPQjIUV
-# fFNBptoYBMiLMA0GCSqGSIb3DQEBAQUABIIBAALoj/YNt5BNsohamCa3OJ7tH9wV
-# 7Ty0qqTl2YKMlB+TvpXQe0lXkXcOU9S0mcWclWknAWRvOhjLw7fKtGKEilAdfLu3
-# SMvMclUZT2rxl/lGQL4xuhlGbXwqPX09V32Aj1aYsRPMTEf4/Rie0Jg9eaL/hXf2
-# p7DO2l/aXI7yD0h8fBjkzeAgClZEQ1aUDU+x4pQozofkyXQvTq1ZwmXI5HFAMlcw
-# 7XKWbWaj7NPU3Pcq/vVt5WXyMOZoDLzS5sVu8xuJ4WqDZ6rExHJsNeDYKbnCVDOX
-# imeMsSldd3uC5H1MnqS2kmyG/C6HJxMy1nDoExL5zkW7BK02VWc+ogpsSjk=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFFkJO3RA2Wn+kymw
+# k9U+bo9E+wd6MA0GCSqGSIb3DQEBAQUABIIBAAQUvNsgMTrZxjvB70mq0Nm+Ftwu
+# qRTvb5K3rfH9s+IXYfa0L7EJ+dEsQKAQeeV0Vo5GF6x3aq/mvIOWVvbTy9aZeo7F
+# j4mKAQ1wjVpYJNr+Z07kqvAq1swxT+mCR92ZNt31HCAIkwk74tcZKwnxKPfvA1Pr
+# CiDmcjEUoNnJ2D/UyRde9TLQae0yeuq3EcLkAiV7P/oA8kWw/CESJmFPDuHd046Q
+# JAvX1xXVe7wAX2Ex/aXwkW/JXh1HgOwK4IKFIFbjggSb+Ye32lPtPrsmJm1xOxje
+# i7GWeGnoUvwbxwNtksJRIiXp2fpxyJh96dzYA4RSBxZ45phsGjkTujZtU48=
 # SIG # End signature block
