@@ -1,9 +1,10 @@
 <#
     .SYNOPSIS
-        This function gathers information about a particular installed program from 3 different sources:
+        This function gathers information about a particular installed program from 3-4 different sources:
             - The Get-Package Cmdlet fromPowerShellGet/PackageManagement Modules
             - Chocolatey CmdLine (if it is installed)
             - Windows Registry
+            - The `Get-AppxPakcage` cmdlet (if the -IncludeAppx switch is used)
 
         All of this information is needed in order to determine the proper way to install/uninstall a program.
 
@@ -17,12 +18,17 @@
 
         This parameter takes a string that represents the name of the Program that you would like to gather information about.
         The name of the program does NOT have to be exact. For example, if you have 'python3' installed, you can simply use:
-            Get-AllPackageInfo python
+            Get-AllAvailablePackages python
+
+    .PARAMETER IncludeAppx
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If used, information about available Appx (UWP) packages will also be returned.
 
     .EXAMPLE
         # Open an elevated PowerShell Session, import the module, and -
         
-        PS C:\Users\zeroadmin> Get-AllPackageInfo openssh
+        PS C:\Users\zeroadmin> Get-AllAvailablePackages -IncludeAppX
 #>
 function Get-AllAvailablePackages {
     [CmdletBinding()]
@@ -31,7 +37,10 @@ function Get-AllAvailablePackages {
             Mandatory=$False,
             Position=0
         )]
-        [string]$ProgramName
+        [string]$ProgramName,
+
+        [Parameter(Mandatory=$False)]
+        [switch]$IncludeAppx
     )
 
     if ($ProgramName) {
@@ -148,29 +157,31 @@ function Get-AllAvailablePackages {
         }
     }
 
-    # Get all relevant AppX Package Info
-    $AllAppxPackages = Get-AppxPackage -AllUsers
-    if ($ProgramName) {
-        $AppxPackagesFinal = $AllAppxPackages | Where-Object {$_.Name -match $PNRegex}
-    }
-    else {
-        $AppxPackagesFinal = $AllAppxPackages
-    }
-    if ($AppxPackagesFinal.Count -gt 0) {
-        $AppxPackagesFinal = $AppxPackagesFinal | foreach {
-            $AppxManifest = $_.InstallLocation + "\AppxManifest.xml"
-            if (Test-Path $AppxManifest) {
-                $AppxManifestContent = Get-Content $AppxManifest
-                $ApplicationIdCheck = $AppxManifestContent -match "Application Id="
-                if ($ApplicationIdCheck) {
-                    $AppxId = $($ApplicationIdCheck -split '"')[1].Trim()
-                    $LaunchString = 'explorer.exe shell:AppsFolder\'+ $_.PackageFamilyName + '!' + $AppxId
-                    $_ | Add-Member -MemberType NoteProperty -Name "LaunchString" -Value $LaunchString
+    if ($IncludeAppx) {
+        # Get all relevant AppX Package Info
+        $AllAppxPackages = Get-AppxPackage -AllUsers
+        if ($ProgramName) {
+            $AppxPackagesFinal = $AllAppxPackages | Where-Object {$_.Name -match $PNRegex}
+        }
+        else {
+            $AppxPackagesFinal = $AllAppxPackages
+        }
+        if ($AppxPackagesFinal.Count -gt 0) {
+            $AppxPackagesFinal = $AppxPackagesFinal | foreach {
+                $AppxManifest = $_.InstallLocation + "\AppxManifest.xml"
+                if (Test-Path $AppxManifest) {
+                    $AppxManifestContent = Get-Content $AppxManifest
+                    $ApplicationIdCheck = $AppxManifestContent -match "Application Id="
+                    if ($ApplicationIdCheck) {
+                        $AppxId = $($ApplicationIdCheck -split '"')[1].Trim()
+                        $LaunchString = 'explorer.exe shell:AppsFolder\'+ $_.PackageFamilyName + '!' + $AppxId
+                        $_ | Add-Member -MemberType NoteProperty -Name "LaunchString" -Value $LaunchString
+                    }
+                    else {
+                        $_ | Add-Member -MemberType NoteProperty -Name "LaunchString" -Value "unknown"
+                    }
+                    $_
                 }
-                else {
-                    $_ | Add-Member -MemberType NoteProperty -Name "LaunchString" -Value "unknown"
-                }
-                $_
             }
         }
     }
@@ -186,8 +197,8 @@ function Get-AllAvailablePackages {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU/dPDPT4EArnsRfALYo2uYYA9
-# An+gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUXlWc7JImjgwBDinAMsOq4b2S
+# J/Wgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -244,11 +255,11 @@ function Get-AllAvailablePackages {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFEXLcsDVpyGX2sJ6
-# 8BWDuq/JohF9MA0GCSqGSIb3DQEBAQUABIIBAKBplTC+Zj8nGEcCWxjFO18oeo6x
-# 0l9bOGjjQstDGK2XpFbwgJRgzjlapZ8EDX7Pczcb5Oh0dvL2ebILKDhNj8FLO+k7
-# GOh3kzk82uVhDQe3MwIBFWd2w6qHppU35t5PRhBUkmqZkKauBxBktQzexnx0xDB1
-# qJYpvPi7ol4CTftAKvLDkRBGdbsn6J+4NiKPM9w6mzheH9pWrDwjKNVEElhkp1HD
-# 411JaDq+3jIXn0ZLDMDkUQ/kVbk4IOKavbVBhYyKlMnf/cqccviY6ZoBN1+PJsoS
-# MVZqtP34AHNBJgsIRLO+djk1m9DVYP+GasJgWsnA791jPbVzY9OYTase9uQ=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFIJ8KAqs5538JSkA
+# HIbpMNNEzsS5MA0GCSqGSIb3DQEBAQUABIIBACXMZzbp2CbFD+Lgglpx+SPB4Ebi
+# yB62wc9AUoTJPKFDCEAuTGjQfHgA+6VNLLVqEwHH60yOIotVElfolEt7VJgV3KRq
+# QTjPZyxxWtYKc+N0YcwJXFq9R4bOBdkSO7vVydEcNYWzWLlw8JnwZ66fnUkppeNG
+# wm+qFPgK1HFOb4p/LnUe/1ZRkvNNFyuggvwOa5eZ9wchKTKkkUPZxDOhBgr2+Lgl
+# P7xBW1bURtCoKLBkJxV+ofDkIuonilYyLgvwGrB1udyGswlPrpXWJS2fDXA9Q5js
+# pubg18TL7I0VVWomaJDlrkd/y+r1BW0P18Uwz8UUQSNdRowB6dgCdhoD75k=
 # SIG # End signature block
