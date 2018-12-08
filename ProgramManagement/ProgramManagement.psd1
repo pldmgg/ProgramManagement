@@ -12,7 +12,7 @@
 RootModule = 'ProgramManagement.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.2.0'
+ModuleVersion = '1.3.0'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -69,7 +69,7 @@ PowerShellVersion = '5.1'
 # NestedModules = @()
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-FunctionsToExport = 'Get-AllAvailablePackages','Get-AllPackageInfo','Get-InstalledProgramsFromRegistry',
+FunctionsToExport = 'Get-AllPackageInfo','Get-InstalledProgramsFromRegistry',
                     'Install-ChocolateyCmdLine', 'Install-Program','New-Runspace','Uninstall-Program',
                     'Update-ChocolateyEnv','Update-PackageManagement'
 
@@ -126,8 +126,8 @@ HelpInfoURI = 'https://github.com/pldmgg/ProgramManagement'
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUFJ2suWtRS2g9XucGFSye3ClE
-# yYygggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUnDF9yQ4knVOLWlplMb2SOtsU
+# e0ugggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -184,11 +184,11 @@ HelpInfoURI = 'https://github.com/pldmgg/ProgramManagement'
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFFkJO3RA2Wn+kymw
-# k9U+bo9E+wd6MA0GCSqGSIb3DQEBAQUABIIBAAQUvNsgMTrZxjvB70mq0Nm+Ftwu
-# qRTvb5K3rfH9s+IXYfa0L7EJ+dEsQKAQeeV0Vo5GF6x3aq/mvIOWVvbTy9aZeo7F
-# j4mKAQ1wjVpYJNr+Z07kqvAq1swxT+mCR92ZNt31HCAIkwk74tcZKwnxKPfvA1Pr
-# CiDmcjEUoNnJ2D/UyRde9TLQae0yeuq3EcLkAiV7P/oA8kWw/CESJmFPDuHd046Q
-# JAvX1xXVe7wAX2Ex/aXwkW/JXh1HgOwK4IKFIFbjggSb+Ye32lPtPrsmJm1xOxje
-# i7GWeGnoUvwbxwNtksJRIiXp2fpxyJh96dzYA4RSBxZ45phsGjkTujZtU48=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFIOiEV3y8XhfQupT
+# H88E7ksM+WPrMA0GCSqGSIb3DQEBAQUABIIBABWBsCkkNRSth70Nl2I4DEgxAQES
+# 0lRgx88j905vytlhU8jgy+0hWcqdiNSs16T5No/B7Jj7s5N09+0vQN45qqN1TfUc
+# 4jCWWHtZwCwHxYsXLjMKqF9qCagclYu+a8l9ODMEzWTAYtmk6vb3iPD7thwIrkW8
+# EMSez7WEfMUQOOK4BE3u57GnJkDycftdxzjkrGCmTB2t+2f3wPFB23H6eF/chGqn
+# 78t2puF2K5CnyLKfrG0T+qY1BBYbv2GU7enR2MmeOA/pP85MIgoHCyygDMG6p4sP
+# cradOK4YOx155OtilmxKfaR9gJWuET22O5RxJIu0Qhp0GnrWigvONJ5T/F4=
 # SIG # End signature block

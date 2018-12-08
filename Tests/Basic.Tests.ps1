@@ -65,8 +65,7 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
         $Commands -contains 'ManualPSGalleryModuleInstall' | Should Be $False
         $Commands -contains 'PauseForWarning' | Should Be $False
         $Commands -contains 'UnzipFile' | Should Be $False
-
-        $Commands -contains 'Get-AllAvailablePackages' | Should Be $True
+        
         $Commands -contains 'Get-AllPackageInfo' | Should Be $True
         $Commands -contains 'Get-InstalledProgramsFromRegistry' | Should Be $True
         $Commands -contains 'Install-ChocolateyCmdLine' | Should Be $True
@@ -96,8 +95,8 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU4x3gqaUQgxrWdQ4sYj7jpUMm
-# 0uegggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUQ4gVm1rogmsNcTO8w4iaSJKg
+# SR6gggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -154,11 +153,11 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFLHQiEr0pa5iuC16
-# V94a1YjtZ7nWMA0GCSqGSIb3DQEBAQUABIIBAKW1xh7iaCB+Xehk5lgPeSKntHvz
-# QO9uQ+bZ2T6Lx8jXAewLbtcTdkVwd4ES7UPNA6Vi0lcUVqU1kioyYQYYWXj6Wrh5
-# rM55gOtvUHwk7tO5ONfEJf82gEDiuzqmpG9NA9VUK1gs9cPvSGTofqKSzDT4ypVF
-# ztqX7YRaOtVyO6q4naJJAn6d8MY72miO8Ojz4yXCyGm9bW/JG0luTvYjqe7/FdYf
-# FOPwgUYLeklLyhh4OY/81eIECp+6OVCTW9EXfPoOrQBApA6H2RXNZTz/VjtOSPxt
-# yAInt2CyNmzMkCwpCV/0JDP/kS9Ql9HMw6lXV+r9Gtnf/J2c2JYusI4zE1w=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFAl5M03Od23jFHe4
+# GhKVhI3qluspMA0GCSqGSIb3DQEBAQUABIIBAHh7HWw6oaKRRX3tF8a+mZDaEXm1
+# zoaegdFav5B3cekpDBZGIxNjTB695r3wIjJj6+Gtd0x9FyN8mvIVegieArMRQ+wi
+# 44ded4RINeitTcv3Bi3A0BnrdalYFkD2BBT1lHTAbBNhUwiugoFjYF4gw3l4SEr9
+# 19l1pM5eKe4vFwEOnYGf0b8J2Br7imLPUbsyzkb2prMPmqz1UplauS7ZzstuxJJq
+# /OTXgSUOOb7Ub+V6ueDYZ+Dpsxh0xjgJM4YAnq+osfoeor2Qk57wTA71yUOJ8PLM
+# v/w9cD0lquzZmkan1jIKgL5AZBHQ6RsqbCYFr6OwdY+XVZOP0/no+kCyw6U=
 # SIG # End signature block

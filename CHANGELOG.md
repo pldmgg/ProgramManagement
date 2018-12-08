@@ -1,8 +1,13 @@
 # Change log
 
+## 1.3.0 (December 8, 2018)
+
+- Removed Get-AllAvailablePackages function
+- Updated Get-AllPackageInfo to handle Appx packages
+
 ## 1.2.0 (December 7, 2018)
 
-- Fixed issue with chocolatey v2 api availability check in PowerShell Core
+- Added Get-AllAvailablePackages function
 
 ## 1.1.3 (November 26, 2018)
 

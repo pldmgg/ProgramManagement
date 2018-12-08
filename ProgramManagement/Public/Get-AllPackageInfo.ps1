@@ -1,9 +1,10 @@
 <#
     .SYNOPSIS
-        This function gathers information about a particular installed program from 3 different sources:
+        This function gathers information about a particular installed program from 3-4 different sources:
             - The Get-Package Cmdlet fromPowerShellGet/PackageManagement Modules
             - Chocolatey CmdLine (if it is installed)
             - Windows Registry
+            - The `Get-AppxPakcage` cmdlet (if the -IncludeAppx switch is used)
 
         All of this information is needed in order to determine the proper way to install/uninstall a program.
 
@@ -13,11 +14,21 @@
     .NOTES
 
     .PARAMETER ProgramName
-        This parameter is MANDATORY.
+        This parameter is OPTIONAL.
 
         This parameter takes a string that represents the name of the Program that you would like to gather information about.
         The name of the program does NOT have to be exact. For example, if you have 'python3' installed, you can simply use:
-            Get-AllPackageInfo python
+            Get-AllAvailablePackages python
+
+    .PARAMETER IncludeAppx
+        This parameter is OPTIONAL.
+
+        This parameter is a switch. If used, information about available Appx (UWP) packages will also be returned.
+
+    .EXAMPLE
+        # Open an elevated PowerShell Session, import the module, and -
+        
+        PS C:\Users\zeroadmin> Get-AllPackageInfo -IncludeAppX
 
     .EXAMPLE
         # Open an elevated PowerShell Session, import the module, and -
@@ -28,68 +39,92 @@ function Get-AllPackageInfo {
     [CmdletBinding()]
     Param (
         [Parameter(
-            Mandatory=$True,
+            Mandatory=$False,
             Position=0
         )]
-        [string]$ProgramName
+        [string]$ProgramName,
+
+        [Parameter(Mandatory=$False)]
+        [switch]$IncludeAppx
     )
 
-    # Generate regex string to loosely match Program Name
-    $PNRegexPrep = $([char[]]$ProgramName | foreach {"([\.]|[$_])+"}) -join ""
-    $PNRegexPrep2 = $($PNRegexPrep -split "\+")[1..$($($PNRegexPrep -split "\+").Count)] -join "+"
-    $PNRegex = "^$([char[]]$ProgramName[0])+$PNRegexPrep2"
-    # For example, $PNRegex string for $ProgramName 'nodejs' should be:
-    #     ^n+([\.]|[o])+([\.]|[d])+([\.]|[e])+([\.]|[j])+([\.]|[s])+
+    if ($ProgramName) {
+        # Generate regex string to loosely match Program Name
+        $PNRegexPrep = $([char[]]$ProgramName | foreach {"([\.]|[$_])+"}) -join ""
+        $PNRegexPrep2 = $($PNRegexPrep -split "\+")[1..$($($PNRegexPrep -split "\+").Count)] -join "+"
+        $PNRegex = "$([char[]]$ProgramName[0])+$PNRegexPrep2"
+        # For example, $PNRegex string for $ProgramName 'nodejs' should be:
+        #     ^n+([\.]|[o])+([\.]|[d])+([\.]|[e])+([\.]|[j])+([\.]|[s])+
+    }
 
     # If PackageManagement/PowerShellGet is installed, determine if $ProgramName is installed
     if ([bool]$(Get-Command Get-Package -ErrorAction SilentlyContinue)) {
         $PSGetInstalledPrograms = Get-Package
-        $PSGetInstalledPackageObjectsFinal = $PSGetInstalledPrograms | Where-Object {$_.Name -match $PNRegex}
 
-        # Add some more information regarding these packages - specifically MSIFileItem, MSILastWriteTime, and RegLastWriteTime
-        # This info will come in handy if there's a specific order related packages needed to be uninstalled in so that it's clean.
-        # (In other words, with this info, we can sort by when specific packages were installed, and uninstall latest to earliest
-        # so that there aren't any race conditions)
-        [array]$CheckInstalledPrograms = Get-InstalledProgramsFromRegistry -ProgramTitleSearchTerm $PNRegex
-        $WindowsInstallerMSIs = Get-ChildItem -Path "C:\Windows\Installer" -File
-        $RelevantMSIFiles = foreach ($FileItem in $WindowsInstallerMSIs) {
-            $MSIProductName = GetMSIFileInfo -MsiFileItem $FileItem -Property ProductName -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
-            if ($MSIProductName -match $PNRegex) {
-                [pscustomobject]@{
-                    ProductName = $MSIProductName
-                    FileItem    = $FileItem
-                }
-            }
+        if ($ProgramName) {
+            $PSGetInstalledPackageObjectsFinal = $PSGetInstalledPrograms | Where-Object {$_.Name -match $PNRegex}
         }
-        
-        if ($CheckInstalledPrograms.Count -gt 0) {
-            if ($($(Get-Item $CheckInstalledPrograms[0].PSPath) | Get-Member).Name -notcontains "LastWriteTime") {
-                AddLastWriteTimeToRegKeys
-            }
+        else {
+            $PSGetInstalledPackageObjectsFinal = $PSGetInstalledPrograms
+        }
 
-            foreach ($RegPropertiesCollection in $CheckInstalledPrograms) {
-                $RegPropertiesCollection | Add-Member -MemberType NoteProperty -Name "LastWriteTime" -Value $(Get-Item $RegPropertiesCollection.PSPath).LastWriteTime
-            }
-            [System.Collections.ArrayList]$CheckInstalledPrograms = [System.Collections.ArrayList][array]$($CheckInstalledPrograms | Sort-Object -Property LastWriteTime)
-            # Make sure that the LATEST Registry change comes FIRST in the ArrayList
-            $CheckInstalledPrograms.Reverse()
-
-            foreach ($Package in $PSGetInstalledPackageObjectsFinal) {
-                $RelevantMSIFile = $RelevantMSIFiles | Where-Object {$_.ProductName -eq $Package.Name}
-                if ($RelevantMSIFile) {
-                    $Package | Add-Member -MemberType NoteProperty -Name "MSIFileItem" -Value $RelevantMSIFile.FileItem
-                    $Package | Add-Member -MemberType NoteProperty -Name "MSILastWriteTime" -Value $RelevantMSIFile.FileItem.LastWriteTime
-                }
-
-                if ($Package.TagId -ne $null) {
-                    $RegProperties = $CheckInstalledPrograms | Where-Object {$_.PSChildName -match $Package.TagId}
-                    $LastWriteTime = $(Get-Item $RegProperties.PSPath).LastWriteTime
-                    $Package | Add-Member -MemberType NoteProperty -Name "RegLastWriteTime" -Value $LastWriteTime
+        if ($PSGetInstalledPackageObjectsFinal.Count -gt 0) {
+            # Add some more information regarding these packages - specifically MSIFileItem, MSILastWriteTime, and RegLastWriteTime
+            # This info will come in handy if there's a specific order related packages needed to be uninstalled in so that it's clean.
+            # (In other words, with this info, we can sort by when specific packages were installed, and uninstall latest to earliest
+            # so that there aren't any race conditions)
+            [array]$CheckInstalledPrograms = @(Get-InstalledProgramsFromRegistry)
+            $WindowsInstallerMSIs = Get-ChildItem -Path "C:\Windows\Installer" -File
+            $RelevantMSIFiles = foreach ($FileItem in $WindowsInstallerMSIs) {
+                $MSIProductName = GetMSIFileInfo -MsiFileItem $FileItem -Property ProductName -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
+                if ($MSIProductName -match $PNRegex) {
+                    [pscustomobject]@{
+                        ProductName = $MSIProductName
+                        FileItem    = $FileItem
+                    }
                 }
             }
-            [System.Collections.ArrayList]$PSGetInstalledPackageObjectsFinal = [array]$($PSGetInstalledPackageObjectsFinal | Sort-Object -Property MSILastWriteTime)
-            # Make sure that the LATEST install comes FIRST in the ArrayList
-            $PSGetInstalledPackageObjectsFinal.Reverse()
+            
+            if ($CheckInstalledPrograms.Count -gt 0) {
+                if ($($(Get-Item $CheckInstalledPrograms[0].PSPath) | Get-Member).Name -notcontains "LastWriteTime") {
+                    AddLastWriteTimeToRegKeys
+                }
+
+                foreach ($RegPropertiesCollection in $CheckInstalledPrograms) {
+                    $RegPropertiesCollection | Add-Member -MemberType NoteProperty -Name "LastWriteTime" -Value $(Get-Item $RegPropertiesCollection.PSPath).LastWriteTime
+                }
+                [System.Collections.ArrayList]$CheckInstalledPrograms = [System.Collections.ArrayList][array]$($CheckInstalledPrograms | Sort-Object -Property LastWriteTime)
+                # Make sure that the LATEST Registry change comes FIRST in the ArrayList
+                $CheckInstalledPrograms.Reverse()
+
+                foreach ($Package in $PSGetInstalledPackageObjectsFinal) {
+                    $RelevantMSIFile = $RelevantMSIFiles | Where-Object {$_.ProductName -eq $Package.Name}
+                    if ($RelevantMSIFile) {
+                        $Package | Add-Member -MemberType NoteProperty -Name "MSIFileItem" -Value $RelevantMSIFile.FileItem
+                        $Package | Add-Member -MemberType NoteProperty -Name "MSILastWriteTime" -Value $RelevantMSIFile.FileItem.LastWriteTime
+                    }
+
+                    if ($Package.TagId -ne $null) {
+                        $RegProperties = $CheckInstalledPrograms | Where-Object {$_.PSChildName -match $Package.TagId}
+                        $LastWriteTime = $(Get-Item $RegProperties.PSPath).LastWriteTime
+                        $Package | Add-Member -MemberType NoteProperty -Name "RegLastWriteTime" -Value $LastWriteTime
+                    }
+                }
+                [System.Collections.ArrayList]$PSGetInstalledPackageObjectsFinal = [array]$($PSGetInstalledPackageObjectsFinal | Sort-Object -Property MSILastWriteTime)
+                # Make sure that the LATEST install comes FIRST in the ArrayList
+                $PSGetInstalledPackageObjectsFinal.Reverse()
+            }
+
+            if ($ProgramName) {
+                $CheckInstalledProgramsFinal = $CheckInstalledPrograms | Where-Object {
+                    $_.InstallSource -match $PNRegex -or
+                    $_.DisplayName -match $PNRegex -or
+                    $_.InstallLocation -eq $PNRegex
+                }
+            }
+            else {
+                $CheckInstalledProgramsFinal = $CheckInstalledPrograms
+            }
         }        
     }
 
@@ -130,21 +165,56 @@ function Get-AllPackageInfo {
             $null = $ChocolateyInstalledProgramObjects.Add($PSCustomObject)
         }
 
-        $ChocolateyInstalledProgramObjectsFinal = $ChocolateyInstalledProgramObjects | Where-Object {$_.ProgramName -match $PNRegex}
+        if ($ProgramName) {
+            $ChocolateyInstalledProgramObjectsFinal = $ChocolateyInstalledProgramObjects | Where-Object {$_.ProgramName -match $PNRegex}
+        }
+        else {
+            $ChocolateyInstalledProgramObjectsFinal = $ChocolateyInstalledProgramObjects
+        }
+    }
+
+    if ($IncludeAppx) {
+        # Get all relevant AppX Package Info
+        $AllAppxPackages = Get-AppxPackage -AllUsers
+        if ($ProgramName) {
+            $AppxPackagesFinal = $AllAppxPackages | Where-Object {$_.Name -match $PNRegex}
+        }
+        else {
+            $AppxPackagesFinal = $AllAppxPackages
+        }
+        if ($AppxPackagesFinal.Count -gt 0) {
+            $AppxPackagesFinal = $AppxPackagesFinal | foreach {
+                $AppxManifest = $_.InstallLocation + "\AppxManifest.xml"
+                if (Test-Path $AppxManifest) {
+                    $AppxManifestContent = Get-Content $AppxManifest
+                    $ApplicationIdCheck = $AppxManifestContent -match "Application Id="
+                    if ($ApplicationIdCheck) {
+                        $AppxId = $($ApplicationIdCheck -split '"')[1].Trim()
+                        $LaunchString = 'explorer.exe shell:AppsFolder\'+ $_.PackageFamilyName + '!' + $AppxId
+                        $_ | Add-Member -MemberType NoteProperty -Name "LaunchString" -Value $LaunchString
+                    }
+                    else {
+                        $_ | Add-Member -MemberType NoteProperty -Name "LaunchString" -Value "unknown"
+                    }
+                    $_
+                }
+            }
+        }
     }
 
     [pscustomobject]@{
         ChocolateyInstalledProgramObjects           = $ChocolateyInstalledProgramObjectsFinal
         PSGetInstalledPackageObjects                = $PSGetInstalledPackageObjectsFinal
-        RegistryProperties                          = $CheckInstalledPrograms
+        AppxAvailablePackages                       = $AppxPackagesFinal
+        RegistryProperties                          = $CheckInstalledProgramsFinal
     }
 }
 
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUJ+GeajFLqPtatW+JOlYRXwvg
-# V8Cgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUUuVy35iNG32n1CUoTOMxIQt4
+# 18qgggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -201,11 +271,11 @@ function Get-AllPackageInfo {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFIhvfHiAd8cs0Xtz
-# 904rdBiu9Hi4MA0GCSqGSIb3DQEBAQUABIIBACL1vud5vUaa3XSAlEAP7KuJAStE
-# uOUvmyG18dIKul2DrpcIjB9ywPbN+GM8EeELOsc3R3DwRvukUWxjmeSs6rUau6V6
-# Pg14wGlFf90vB7vB5fA/F0OQUpi3juraWfAKM6+CYMx/USag0igd6I+kUDZ/uCa4
-# Sb8jBnY5T3yDyu/KYMoD0SWWzIWKEzQux6dJ17BK5i3hsHAKDimEm4PYZ2PaoiAp
-# Cg8pKPsGrHZ5elTq+ko2Fh/y91HVsjFzWb1E4BVzymZKsqAUhgY0JAVy6VROyneJ
-# gT7UMy5Vu5yw2RQoRfHzUP2bGOT6kDKM8hOUMTGwCxBLTqRONO5cH7LqdlA=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFFEe0E3oBjBegjSj
+# O41FM053PonLMA0GCSqGSIb3DQEBAQUABIIBAAU6WSipWM6uvA2iodWz1QSD+uqx
+# tjXGjoKGGutQrbY9FbqMFNAulXpeaimZlYe0gySon44UhDfOStynITb5YbU8Jk+h
+# 95v7dGjRdwvuLwOxGIpxXMiBGrUKCj5wymgG5BpcudNoKtyGpP84JUkSSgHRIEmJ
+# u/gUnfzJPQXxcRidnPhaxiBp/lpT4VZ2spAMwFYWPbowHkJm7FPdsLxyYkM26uzZ
+# D3upkx3gFiIvAaN6s0C481y+BNj7+ZdzAwPzR3GH0a0E3prYygRtFQZKhwWk318P
+# uRCGQdXZMCDgR3P3C7NQ4E1HVVv6fvrSMZ11HSmvYZ/4rfGJU7daWYH1uQc=
 # SIG # End signature block
