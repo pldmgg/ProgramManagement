@@ -2679,7 +2679,7 @@ function Uninstall-Program {
 
     [System.Collections.ArrayList]$PSGetUninstallFailures = @()
     if ($PSGetInstalledPackageObjects.Count -gt 0) {
-        if ($PSGetInstalledPackageObjects.Count -gt 1) {
+        if ($PSGetInstalledPackageObjects.Count -gt 1 -and !$UninstallAllSimilarlyNamedPackages) {
             Write-Warning "Multiple packages matching the name '$ProgramName' have been found."
 
             for ($i=0; $i -lt $PSGetInstalledPackageObjects.Count; $i++) {
@@ -2742,7 +2742,8 @@ function Uninstall-Program {
                 [array]$FinalPackagesSelectedForUninstall = $PSGetInstalledPackageObjects
             }
         }
-        if ($PSGetInstalledPackageObjects.Count -eq 1) {
+        if ($PSGetInstalledPackageObjects.Count -eq 1 -or
+        $($PSGetInstalledPackageObjects.Count -gt 1 -and $UninstallAllSimilarlyNamedPackages)) {
             [array]$FinalPackagesSelectedForUninstall = $PSGetInstalledPackageObjects
         }
             
@@ -3618,8 +3619,8 @@ function Update-PackageManagement {
 # SIG # Begin signature block
 # MIIMiAYJKoZIhvcNAQcCoIIMeTCCDHUCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUoFEGUy2Smz/rDOxJyFi9X6ob
-# Fbugggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU2ktjOZqIWnIbrgYPoFJK4wTd
+# C3Ggggn9MIIEJjCCAw6gAwIBAgITawAAAB/Nnq77QGja+wAAAAAAHzANBgkqhkiG
 # 9w0BAQsFADAwMQwwCgYDVQQGEwNMQUIxDTALBgNVBAoTBFpFUk8xETAPBgNVBAMT
 # CFplcm9EQzAxMB4XDTE3MDkyMDIxMDM1OFoXDTE5MDkyMDIxMTM1OFowPTETMBEG
 # CgmSJomT8ixkARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMT
@@ -3676,11 +3677,11 @@ function Update-PackageManagement {
 # ARkWA0xBQjEUMBIGCgmSJomT8ixkARkWBFpFUk8xEDAOBgNVBAMTB1plcm9TQ0EC
 # E1gAAAH5oOvjAv3166MAAQAAAfkwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwx
 # CjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGC
-# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFCbz3Ko2c0+L4BE/
-# PvozZ8rYzF1DMA0GCSqGSIb3DQEBAQUABIIBAIUpUrsgE3ejsOJOX8/jIwfjHitv
-# mUC/Vtin14QeHJpn21yMPkRhMWarDcZZ6zKm5iGAywQkhjLanuxiqkp0D6s+NeT2
-# eyUubPX4RQm2YIdQX3GvapSxWqXLVmg5ZaUTcK9RPqMVEeZ5S/w1S0+sMXVP8WKc
-# 4KAtVa+w3MbSlnQS8ksD7URbzAkBUCNgen6xlTRWDRRcM4B58KymFY9lk9Klhqv/
-# 7FEL1h7T8ZfKn2NlGyMxM8wTVgSuczR0qU5sCOjho6BR96UHGC92tIWsGemd5ShZ
-# aMemD+d6LuTfUenAxneGFXkPqIdtM/O+yvxfJE1fvmaMG8lO/UW8CfqircU=
+# NwIBCzEOMAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFGboVGpskFPSS3Wn
+# k0HQ4FV8Or+cMA0GCSqGSIb3DQEBAQUABIIBAMGQpGfbbvx/fCiX2CSXynhYXMge
+# EbN0wCrDC4YybBJsDWQywZFam/lp2rYwlFjTISWuIuJTB/NZ5pswCmt4vy0ZnF+g
+# eFwgWjV2RkADgR2pLMpSFQjqUFh13ZBOrMJG5L9yRUV3rouvoaqEpW3kSNHM6Ygp
+# 6L+9o/SBm9tu0a7hzvWpjTsV8XRGrrQnwUuUn/cSF+7VbWmLpN5m6HLFf/vRcyhI
+# uV64qiH3+dWZO2+hf4FdFTc1YOhlm8ERfstLVDJWevnRGWbR4po4vUzkppNbMCe8
+# Qac7d1ztNsr4z3KW910IamVbVoGFyjX56hKqMkwWLGUSCSKTRPENyoviAWQ=
 # SIG # End signature block

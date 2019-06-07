@@ -1,5 +1,9 @@
 # Change log
 
+## 1.3.1 (June 7, 2019)
+
+- Fixed logic with -UninstallAllSimilarlyNamedPackages switch in Uninstall-Program function
+
 ## 1.3.0 (December 8, 2018)
 
 - Removed Get-AllAvailablePackages function
