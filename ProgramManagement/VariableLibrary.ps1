@@ -8,6 +8,7 @@
     ${Function:PauseForWarning}.Ast.Extent.Text
     ${Function:UnzipFile}.Ast.Extent.Text
     ${Function:Get-AllPackageInfo}.Ast.Extent.Text
+    ${Function:Get-ExePath}.Ast.Extent.Text
     ${Function:Get-InstalledProgramsFromRegistry}.Ast.Extent.Text
     ${Function:Install-ChocolateyCmdLine}.Ast.Extent.Text
     ${Function:Install-Program}.Ast.Extent.Text
@@ -15,6 +16,7 @@
     ${Function:Uninstall-Program}.Ast.Extent.Text
     ${Function:Update-ChocolateyEnv}.Ast.Extent.Text
     ${Function:Update-PackageManagement}.Ast.Extent.Text
+    ${Function:Update-SystemPathNow}.Ast.Extent.Text
 )
 
 # SIG # Begin signature block

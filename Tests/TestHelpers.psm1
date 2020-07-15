@@ -162,8 +162,10 @@ function Install-ModuleFromPowerShellGallery
         {
             # Nuget.exe can't be found - download it to temp folder
             $nugetDownloadURL = 'http://nuget.org/nuget.exe'
+            #Invoke-WebRequest -Uri $nugetDownloadURL -OutFile $tempNugetPath
+            [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls"
+            [System.Net.WebClient]::new().Downloadfile($nugetDownloadURL, $tempNugetPath)
 
-            Invoke-WebRequest -Uri $nugetDownloadURL -OutFile $tempNugetPath
             Write-Verbose -Message "nuget.exe downloaded at $tempNugetPath"
 
             $nugetPath = $tempNugetPath

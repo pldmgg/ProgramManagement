@@ -117,7 +117,9 @@ function Update-PackageManagement {
             if ($WarningResponse) {
                 Write-Host "Downloading latest stable nuget.exe..."
                 $OutFilePath = GetNativePath -PathAsStringArray @($HOME, "Downloads", "nuget.exe")
-                Invoke-WebRequest -Uri "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" -OutFile $OutFilePath
+                #Invoke-WebRequest -Uri "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" -OutFile $OutFilePath
+                [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls"
+                [System.Net.WebClient]::new().Downloadfile("https://dist.nuget.org/win-x86-commandline/latest/nuget.exe", $OutFilePath)
             }
             $AddChocolateyPackageProvider = $false
         }
@@ -141,7 +143,9 @@ function Update-PackageManagement {
         if ($(Get-Module -ListAvailable).Name -notcontains "PackageManagement") {
             Write-Host "Downloading PackageManagement .msi installer..."
             $OutFilePath = GetNativePath -PathAsStringArray @($HOME, "Downloads", "PackageManagement_x64.msi")
-            Invoke-WebRequest -Uri "https://download.microsoft.com/download/C/4/1/C41378D4-7F41-4BBE-9D0D-0E4F98585C61/PackageManagement_x64.msi" -OutFile $OutFilePath
+            #Invoke-WebRequest -Uri "https://download.microsoft.com/download/C/4/1/C41378D4-7F41-4BBE-9D0D-0E4F98585C61/PackageManagement_x64.msi" -OutFile $OutFilePath
+            [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls"
+            [System.Net.WebClient]::new().Downloadfile("https://download.microsoft.com/download/C/4/1/C41378D4-7F41-4BBE-9D0D-0E4F98585C61/PackageManagement_x64.msi", $OutFilePath)
             
             $DateStamp = Get-Date -Format yyyyMMddTHHmmss
             $MSIFullPath = $OutFilePath

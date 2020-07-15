@@ -63,6 +63,7 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
         $Commands -contains 'UnzipFile' | Should Be $False
         
         $Commands -contains 'Get-AllPackageInfo' | Should Be $True
+        $Commands -contains 'Get-ExePath' | Should Be $True
         $Commands -contains 'Get-InstalledProgramsFromRegistry' | Should Be $True
         $Commands -contains 'Install-ChocolateyCmdLine' | Should Be $True
         $Commands -contains 'Install-Program' | Should Be $True
@@ -70,6 +71,7 @@ Describe -Name "General Project Validation: $env:BHProjectName" -Tag 'Validation
         $Commands -contains 'Uninstall-Program' | Should Be $True
         $Commands -contains 'Update-ChocolateyEnv' | Should Be $True
         $Commands -contains 'Update-PackageManagement' | Should Be $True
+        $Commands -contains 'Update-SystemPathNow' | Should Be $True
     }
 
     It "Module '$env:BHProjectName' Private Functions Are Available in Internal Scope" {

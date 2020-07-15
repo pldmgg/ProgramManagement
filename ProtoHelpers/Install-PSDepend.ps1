@@ -33,7 +33,9 @@ try {
     if(-not ($NugetPath = (Get-Command 'nuget.exe' -ErrorAction SilentlyContinue).Path)) {
         $NugetPath = Join-Path $ENV:USERPROFILE nuget.exe
         if(-not (Test-Path $NugetPath)) {
-            Invoke-WebRequest -uri 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' -OutFile $NugetPath
+            #Invoke-WebRequest -uri 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' -OutFile $NugetPath
+            [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls"
+            [System.Net.WebClient]::new().Downloadfile('https://dist.nuget.org/win-x86-commandline/latest/nuget.exe', $NugetPath)
         }
     }
 

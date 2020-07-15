@@ -271,7 +271,7 @@ function Install-Program {
             return
         }
     }
-    
+
     try {
         $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction SilentlyContinue
         [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
@@ -620,7 +620,7 @@ function Install-Program {
         $FinalExeLocation = $ExePath
     }
 
-    if (![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue) {
+    if (![bool]$(Get-Command $FinalCommandName -ErrorAction SilentlyContinue)) {
         Write-Host "The command '$FinalCommandName' is not currently available in PATH or env:Path, however, the following locations might contain the desired command:"
         @($FinalExeLocation) | foreach {Write-Host $_}
 
