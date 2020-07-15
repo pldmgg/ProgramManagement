@@ -55,11 +55,11 @@ function Uninstall-Program {
     }
 
     try {
-        #$null = clist --local-only
         $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction SilentlyContinue
         [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
         [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
         [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
+        [array]$AppxInstalledPackageObjects = $PackageManagerInstallObjects.AppxAvailablePackages
     }
     catch {
         Write-Error $_
@@ -71,23 +71,17 @@ function Uninstall-Program {
     
 
     #region >> Main Body
-    if ($ChocolateyInstalledProgramObjects.Count -eq 0 -and $PSGetInstalledPackageObjects.Count -eq 0) {
+    if ($ChocolateyInstalledProgramObjects.Count -eq 0 -and $PSGetInstalledPackageObjects.Count -eq 0 -and $RegistryProperties.Count -eq 0) {
         Write-Error "Unable to find an installed program matching the name $ProgramName! Halting!"
         $global:FunctionResult = "1"
         return
     }
 
-    # We MIGHT be able to get the directory where the Program's binaries are by using Get-Command.
-    # This info is only useful if the uninstall isn't clean for some reason
-    $ProgramExePath = $(Get-Command $ProgramName -ErrorAction SilentlyContinue).Source
-    if ($ProgramExePath) {
-        $ProgramParentDirPath = $ProgramExePath | Split-Path -Parent
-    }
-
+    # If we found an install that was handled by PSGet, then uninstall via PSGet
     [System.Collections.ArrayList]$PSGetUninstallFailures = @()
     if ($PSGetInstalledPackageObjects.Count -gt 0) {
         if ($PSGetInstalledPackageObjects.Count -gt 1 -and !$UninstallAllSimilarlyNamedPackages) {
-            Write-Warning "Multiple packages matching the name '$ProgramName' have been found."
+            Write-Warning "Multiple packages matching the name '$ProgramName' have been found via searching PSGet."
 
             for ($i=0; $i -lt $PSGetInstalledPackageObjects.Count; $i++) {
                 Write-Host "$i) $($PSGetInstalledPackageObjects[$i].Name)"
@@ -170,10 +164,11 @@ function Uninstall-Program {
     }
 
     try {
-        $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction Stop
+        $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction SilentlyContinue
         [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
         [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
         [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
+        [array]$AppxInstalledPackageObjects = $PackageManagerInstallObjects.AppxAvailablePackages
     }
     catch {
         Write-Error $_
@@ -181,71 +176,83 @@ function Uninstall-Program {
         return
     }
 
-    # If we still have lingering packages, we need to try uninstall via what the Registry says the uninstall command is...
-    if ($PSGetInstalledPackageObjects.Count -gt 0) {
-        if ($RegistryProperties.Count -gt 0) {
-            foreach ($Program in $RegistryProperties) {
-                if ($Program.QuietUninstallString -ne $null) {
-                    Invoke-Expression "& $($Program.QuietUninstallString)"
-                }
-            }
-        }
-    }
-
-    try {
-        $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction Stop
-        [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
-        [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
-        [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
-    }
-    catch {
-        Write-Error $_
-        $global:FunctionResult = "1"
-        return
-    }
-
-    # If we STILL have lingering packages, we'll just delete from the registry directly and clean up any binaries on the filesystem...
-    if ($PSGetInstalledPackageObjects.Count -gt 0) {
-        [System.Collections.ArrayList]$DirectoriesThatMightNeedToBeRemoved = @()
-        
-        if ($RegistryProperties.Count -gt 0) {
-            foreach ($Program in $RegistryProperties) {
-                if (Test-Path $Program.PSPath) {
-                    $null = $DirectoriesThatMightNeedToBeRemoved.Add($Program.PSPath)
-                    #Remove-Item -Path $Program.PSPath -Recurse -Force
-                }
-            }
-        }
-
-        if ($ProgramParentDirPath) {
-            if (Test-Path $ProgramParentDirPath) {
-                $null = $DirectoriesThatMightNeedToBeRemoved.Add($ProgramParentDirPath)
-                #Remove-Item $ProgramParentDirPath -Recurse -Force -ErrorAction SilentlyContinue
-            }
-        }
-    }
-
-    try {
-        $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction Stop
-        [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
-        [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
-        [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
-    }
-    catch {
-        Write-Error $_
-        $global:FunctionResult = "1"
-        return
-    }
-
-    # Now take care of chocolatey if necessary...
+    # If we found an install that was handled by Chocolatey, then uninstall via Chocolatey
     if ($ChocolateyInstalledProgramObjects.Count -gt 0) {
-        $ChocoUninstallAttempt = $True
-        [System.Collections.ArrayList]$ChocoUninstallFailuresPrep = @()
-        [System.Collections.ArrayList]$ChocoUninstallSuccesses = @()
+        if ($ChocolateyInstalledProgramObjects.Count -gt 1 -and !$UninstallAllSimilarlyNamedPackages) {
+            Write-Warning "Multiple packages matching the name '$ProgramName' have been found via searching the chocolatey cmdline."
 
-        $ErrorFile = [IO.Path]::Combine([IO.Path]::GetTempPath(), [IO.Path]::GetRandomFileName())
-        #$ErrorFile
-        foreach ($ProgramObj in $ChocolateyInstalledProgramObjects) {
+            for ($i=0; $i -lt $ChocolateyInstalledProgramObjects.Count; $i++) {
+                Write-Host "$i) $($ChocolateyInstalledProgramObjects[$i].ProgramName)"
+            }
+            Write-Host "$($ChocolateyInstalledProgramObjects.Count)) All of the Above"
+
+            [int[]]$ValidChoiceNumbers = 0..$($ChocolateyInstalledProgramObjects.Count)
+            $UninstallChoice = Read-Host -Prompt "Please enter one or more numbers (separated by commas) that correspond to the program(s) you would like to uninstall."
+            if ($UninstallChoice -match ',') {
+                [array]$UninstallChoiceArray = $($UninstallChoice -split ',').Trim()
+            }
+            else {
+                [array]$UninstallChoiceArray = $UninstallChoice
+            }
+
+            [System.Collections.ArrayList]$InvalidChoices = @()
+            foreach ($ChoiceNumber in $UninstallChoiceArray) {
+                if ($ValidChoiceNumbers -notcontains $ChoiceNumber) {
+                    $null = $InvalidChoices.Add($ChoiceNumber)
+                }
+            }
+
+            while ($InvalidChoices.Count -ne 0) {
+                Write-Warning "The following selections are NOT valid Choice Numbers: $($InvalidChoices -join ', ')"
+
+                $UninstallChoice = Read-Host -Prompt "Please enter one or more numbers (separated by commas) that correspond to the program(s) you would like to uninstall."
+                if ($UninstallChoice -match ',') {
+                    [array]$UninstallChoiceArray = $($UninstallChoice -split ',').Trim()
+                }
+                else {
+                    [array]$UninstallChoiceArray = $UninstallChoice
+                }
+
+                [System.Collections.ArrayList]$InvalidChoices = @()
+                foreach ($ChoiceNumber in $UninstallChoiceArray) {
+                    if ($ValidChoiceNumbers -notcontains $ChoiceNumber) {
+                        $null = $InvalidChoices.Add($ChoiceNumber)
+                    }
+                }
+            }
+
+            # Make sure that $UninstallChoiceArray is an integer array sorted 0..N
+            try {
+                [int[]]$UninstallChoiceArray = $UninstallChoiceArray | Sort-Object
+            }
+            catch {
+                Write-Error $_
+                Write-Error "`$UninstallChoiceArray cannot be converted to an array of integers! Halting!"
+                $global:FunctionResult = "1"
+                return
+            }
+
+            if ($UninstallChoiceArray -notcontains $ChocolateyInstalledProgramObjects.Count) {
+                [array]$FinalPackagesSelectedForUninstall = foreach ($ChoiceNumber in $UninstallChoiceArray) {
+                    $ChocolateyInstalledProgramObjects[$ChoiceNumber]
+                }
+            }
+            else {
+                [array]$FinalPackagesSelectedForUninstall = $ChocolateyInstalledProgramObjects
+            }
+        }
+        if ($ChocolateyInstalledProgramObjects.Count -eq 1 -or
+        $($ChocolateyInstalledProgramObjects.Count -gt 1 -and $UninstallAllSimilarlyNamedPackages)) {
+            [array]$FinalPackagesSelectedForUninstall = $ChocolateyInstalledProgramObjects
+        }
+            
+        # Do the uninstall
+        [System.Collections.ArrayList]$ChocoUninstallFailures = @()
+        [System.Collections.ArrayList]$ChocoUninstallSuccesses = @()
+        foreach ($Package in $FinalPackagesSelectedForUninstall) {
+            Write-Host "Uninstalling $($Package.ProgramName)..."
+            #choco uninstall $Package.ProgramName -y --force # optionally add the following parameters: -n --remove-dependencies
+
             #Write-Host "Running $($(Get-Command choco).Source) uninstall $($ProgramObj.ProgramName) -y"
             $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
             #$ProcessInfo.WorkingDirectory = $BinaryPath | Split-Path -Parent
@@ -253,12 +260,13 @@ function Uninstall-Program {
             $ProcessInfo.RedirectStandardError = $true
             $ProcessInfo.RedirectStandardOutput = $true
             $ProcessInfo.UseShellExecute = $false
-            $ProcessInfo.Arguments = "uninstall $($ProgramObj.ProgramName) -y --force" # optionally -n --remove-dependencies
+            $ProcessInfo.Arguments = "uninstall $($Package.ProgramName) -y --force" # optionally -n --remove-dependencies
             $Process = New-Object System.Diagnostics.Process
             $Process.StartInfo = $ProcessInfo
             $Process.Start() | Out-Null
             # Below $FinishedInAlottedTime returns boolean true/false
-            $FinishedInAlottedTime = $Process.WaitForExit(60000)
+            # Give it 120 seconds to finish the uninstall
+            $FinishedInAlottedTime = $Process.WaitForExit(120000)
             if (!$FinishedInAlottedTime) {
                 $Process.Kill()
             }
@@ -267,7 +275,7 @@ function Uninstall-Program {
             $AllOutput = $stdout + $stderr
 
             if ($AllOutput -match "failed") {
-                $null = $ChocoUninstallFailuresPrep.Add($ProgramObj)
+                $null = $ChocoUninstallFailures.Add($ProgramObj)
             }
             else {
                 $null = $ChocoUninstallSuccesses.Add($ProgramObj)
@@ -275,12 +283,13 @@ function Uninstall-Program {
         }
     }
 
-    # Re-Check all PackageManager Objects because an uninstall action may/may not have happened
+    # Check to see if the program is still installed
     try {
-        $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction Stop
+        $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction SilentlyContinue
         [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
         [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
         [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
+        [array]$AppxInstalledPackageObjects = $PackageManagerInstallObjects.AppxAvailablePackages
     }
     catch {
         Write-Error $_
@@ -288,7 +297,120 @@ function Uninstall-Program {
         return
     }
 
-    if ($ChocolateyInstalledProgramObjects.Count -gt 0 -or $PSGetInstalledPackageObjects.Count -gt 0 -or $RegistryProperties.Count -gt 0) {
+    # If we still have lingering packages, we need to try uninstall via what the Registry says the uninstall command is...
+    if ($RegistryProperties.Count -gt 0) {
+        if ($RegistryProperties.Count -gt 1 -and !$UninstallAllSimilarlyNamedPackages) {
+            Write-Warning "Multiple packages matching the name '$ProgramName' have been found in the registry."
+
+            for ($i=0; $i -lt $RegistryProperties.Count; $i++) {
+                Write-Host "$i) $($RegistryProperties[$i].ProductName)"
+            }
+            Write-Host "$($RegistryProperties.Count)) All of the Above"
+
+            [int[]]$ValidChoiceNumbers = 0..$($RegistryProperties.Count)
+            $UninstallChoice = Read-Host -Prompt "Please enter one or more numbers (separated by commas) that correspond to the program(s) you would like to uninstall."
+            if ($UninstallChoice -match ',') {
+                [array]$UninstallChoiceArray = $($UninstallChoice -split ',').Trim()
+            }
+            else {
+                [array]$UninstallChoiceArray = $UninstallChoice
+            }
+
+            [System.Collections.ArrayList]$InvalidChoices = @()
+            foreach ($ChoiceNumber in $UninstallChoiceArray) {
+                if ($ValidChoiceNumbers -notcontains $ChoiceNumber) {
+                    $null = $InvalidChoices.Add($ChoiceNumber)
+                }
+            }
+
+            while ($InvalidChoices.Count -ne 0) {
+                Write-Warning "The following selections are NOT valid Choice Numbers: $($InvalidChoices -join ', ')"
+
+                $UninstallChoice = Read-Host -Prompt "Please enter one or more numbers (separated by commas) that correspond to the program(s) you would like to uninstall."
+                if ($UninstallChoice -match ',') {
+                    [array]$UninstallChoiceArray = $($UninstallChoice -split ',').Trim()
+                }
+                else {
+                    [array]$UninstallChoiceArray = $UninstallChoice
+                }
+
+                [System.Collections.ArrayList]$InvalidChoices = @()
+                foreach ($ChoiceNumber in $UninstallChoiceArray) {
+                    if ($ValidChoiceNumbers -notcontains $ChoiceNumber) {
+                        $null = $InvalidChoices.Add($ChoiceNumber)
+                    }
+                }
+            }
+
+            # Make sure that $UninstallChoiceArray is an integer array sorted 0..N
+            try {
+                [int[]]$UninstallChoiceArray = $UninstallChoiceArray | Sort-Object
+            }
+            catch {
+                Write-Error $_
+                Write-Error "`$UninstallChoiceArray cannot be converted to an array of integers! Halting!"
+                $global:FunctionResult = "1"
+                return
+            }
+
+            if ($UninstallChoiceArray -notcontains $RegistryProperties.Count) {
+                [array]$FinalPackagesSelectedForUninstall = foreach ($ChoiceNumber in $UninstallChoiceArray) {
+                    $RegistryProperties[$ChoiceNumber]
+                }
+            }
+            else {
+                [array]$FinalPackagesSelectedForUninstall = $RegistryProperties
+            }
+        }
+        if ($RegistryProperties.Count -eq 1 -or $($RegistryProperties.Count -gt 1 -and $UninstallAllSimilarlyNamedPackages)) {
+            [array]$FinalPackagesSelectedForUninstall = $RegistryProperties
+        }
+
+        foreach ($Package in $FinalPackagesSelectedForUninstall) {
+            if ($Package.QuietUninstallString -ne $null) {
+                Invoke-Expression "& $($Package.QuietUninstallString)"
+            }
+        }
+    }
+
+    try {
+        $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction SilentlyContinue
+        [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
+        [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
+        [array]$RegistryProperties = $PackageManagerInstallObjects.RegistryProperties
+        [array]$AppxInstalledPackageObjects = $PackageManagerInstallObjects.AppxAvailablePackages
+    }
+    catch {
+        Write-Error $_
+        $global:FunctionResult = "1"
+        return
+    }
+
+    [System.Collections.ArrayList]$DirectoriesThatMightNeedToBeRemoved = @()
+
+    # If we STILL have lingering packages, tell the user what they *might* need to delete in order to finish the uninstall
+    if ($RegistryProperties.Count -gt 0) {    
+        foreach ($Program in $RegistryProperties) {
+            if (Test-Path $Program.PSPath) {
+                $null = $DirectoriesThatMightNeedToBeRemoved.Add($Program.PSPath)
+                #Remove-Item -Path $Program.PSPath -Recurse -Force
+            }
+        }
+    }
+
+    # We MIGHT be able to get the directory where the Program's binaries are by using Get-Command.
+    $ProgramExePath = $(Get-Command $ProgramName -ErrorAction SilentlyContinue).Source
+    if ($ProgramExePath) {
+        $ProgramParentDirPath = $ProgramExePath | Split-Path -Parent
+    }
+    if ($ProgramParentDirPath) {
+        if (Test-Path $ProgramParentDirPath) {
+            $null = $DirectoriesThatMightNeedToBeRemoved.Add($ProgramParentDirPath)
+            #Remove-Item $ProgramParentDirPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    if ($ChocolateyInstalledProgramObjects.Count -gt 0 -or $PSGetInstalledPackageObjects.Count -gt 0 -or $RegistryProperties.Count -gt 0 -or $DirectoriesThatMightNeedToBeRemoved.Count -gt 0) {
         Write-Warning "The program '$ProgramName' did NOT cleanly uninstall. Please review output of the Uninstall-Program function for details about lingering references."
     }
     else {

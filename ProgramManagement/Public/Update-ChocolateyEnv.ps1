@@ -38,120 +38,56 @@ function Update-ChocolateyEnv {
 
     ##### BEGIN Main Body #####
 
-    if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
-        [System.Collections.ArrayList]$PotentialChocolateyPaths = @()
-        if ($ChocolateyDirectory) {
-            $null = $PotentialChocolateyPaths.Add($ChocolateyDirectory)
-        }
-        else {
-            if (Test-Path "C:\Chocolatey") {
-                $null = $PotentialChocolateyPaths.Add("C:\Chocolatey")
-            }
-            if (Test-Path "C:\ProgramData\chocolatey") {
-                $null = $PotentialChocolateyPaths.Add("C:\ProgramData\chocolatey")
-            }
-        }
-    }
-    else {
-        $ChocolateyPath = "$($($(Get-Command choco).Source -split "chocolatey")[0])chocolatey"
-    }
-    
-    [System.Collections.ArrayList]$ChocolateyPathsPrep = @()
-    [System.Collections.ArrayList]$ChocolateyPathsToAddToEnvPath = @()
-    foreach ($PotentialPath in $PotentialChocolateyPaths) {
-        if (Test-Path $PotentialPath) {
-            $($(Get-ChildItem $PotentialPath -Directory | foreach {
-                Get-ChildItem $_.FullName -Recurse -File
-            } | foreach {
-                if ($_.Extension -eq ".exe" -or $_.Extension -eq ".bat") {
-                    $_.Directory.FullName
-                }
-            }) | Sort-Object | Get-Unique) | foreach {
-                $null = $ChocolateyPathsPrep.Add($_.Trim("\\"))
-            }   
-        }
-    }
-    foreach ($ChocoPath in $ChocolateyPathsPrep) {
-        if ($(Test-Path $ChocoPath) -and $($env:Path -split ";") -notcontains $ChocoPath -and $ChocoPath -ne $null) {
-            $null = $ChocolateyPathsToAddToEnvPath.Add($ChocoPath)
-        }
+    $ChocoRoot = "C:\ProgramData\chocolatey"
+    $ChocoPath = $ChocoPath + '\bin'
+
+    if (!$(Test-Path $ChocoPath)) {
+        Write-Error "Unable to find path $ChocoPath ! Try running Install-ChocolateyCmdLine. Halting!"
+        return
     }
 
-    foreach ($ChocoPath in $ChocolateyPathsToAddToEnvPath) {
-        if ($env:Path[-1] -eq ";") {
-            $env:Path = "$env:Path" + $ChocoPath + ";"
-        }
-        else {
-            $env:Path = "$env:Path" + ";" + $ChocoPath
-        }
-    }
-
-    # Remove any repeats in $env:Path
-    $UpdatedEnvPath = $($($($env:Path -split ";") | foreach {
+    # Clean up $env:Path
+    $CleanEnvPath = $($($($env:Path -split ";") | foreach {
         if (-not [System.String]::IsNullOrWhiteSpace($_)) {
             if (Test-Path $_) {
                 $_.Trim("\\")
             }
         }
     }) | Select-Object -Unique) -join ";"
+    $env:Path = $CleanEnvPath
 
-    # Next, find chocolatey-core.psm1, chocolateysetup.psm1, chocolateyInstaller.psm1, and chocolateyProfile.psm1
+    # Make sure C:\ProgramData\chocolatey\bin is part of $env:Path
+    $PathArray = $env:Path -split ';'
+    if (!$($PathArray -match [regex]::Escape($ChocoPath))) {
+        $env:Path = $ChocoPath + ';' + $env:Path
+    }
+
+    <#
+    # Next, find chocolatey-core.psm1, chocolatey-windowsupdate.psm1, chocolateyInstaller.psm1, and chocolateyProfile.psm1
     # and import them
-    [System.Collections.ArrayList]$PotentialHelpersDirItems = @()
-    foreach ($PotentialPath in $PotentialChocolateyPaths) {
-        [array]$HelperDir = Get-ChildItem $PotentialPath -Recurse -Directory -Filter "helpers" | Where-Object {$_.FullName -match "chocolatey\\helpers"}
-        if ($HelperDir.Count -gt 0) {
-            $null = $PotentialHelpersDirItems.Add($HelperDir)
-        }
+    $ChocoProfileModulePath = $ChocoRoot + '\helpers\chocolateyProfile.psm1'
+    $ChocoInstallerModulePath = $ChocoRoot + '\helpers\chocolateyInstaller.psm1'
+    $ChocoCoreModulePath = $ChocoRoot + '\extensions\chocolatey-core\chocolatey-core.psm1'
+    $ChocoWinUpdateModulePath = $ChocoRoot + '\extensions\chocolatey-windowsupdate\chocolatey-windowsupdate.psm1'
+
+    $ChocoModulesToImport = @($ChocoProfileModulePath, $ChocoInstallerModulePath, $ChocoCoreModulePath, $ChocoWinUpdateModulePath)
+
+    foreach ($ModulePath in $ChocoModulesToImport) {
+        Remove-Module -Name $([System.IO.Path]::GetFileNameWithoutExtension($ModulePath)) -ErrorAction SilentlyContinue
+        Import-Module -Name $ModulePath
     }
-    if ($PotentialHelpersDirItems.Count -gt 0) {
-        [array]$ChocoHelperDir = $($PotentialHelpersDirItems | Sort-Object -Property LastWriteTime)[-1]
-    }
+    #>
 
-    if ($ChocoHelperDirItem -ne $null) {
-        $ChocoCoreModule = $(Get-ChildItem -Path $ChocoHelperDirItem.FullName -Recurse -File -Filter "*chocolatey-core.psm1").FullName
-        $ChocoSetupModule = $(Get-ChildItem -Path $ChocoHelperDirItem.FullName -Recurse -File -Filter "*chocolateysetup.psm1").FullName
-        $ChocoInstallerModule = $(Get-ChildItem -Path $ChocoHelperDirItem.FullName -Recurse -File -Filter "*chocolateyInstaller.psm1").FullName
-        $ChocoProfileModule = $(Get-ChildItem -Path $ChocoHelperDirItem.FullName -Recurse -File -Filter "*chocolateyProfile.psm1").FullName
+    # Make sure we have ChocolateyInstall environment variable are set
+    $CurrentChocoEnvVariables = $($([Environment]::GetEnvironmentVariables()).GetEnumerator()) | Where-Object {$_.Name -match "Choco"}
 
-        $ChocoModulesToImportPrep = @($ChocoCoreModule, $ChocoSetupModule, $ChocoInstallerModule, $ChocoProfileModule)
-        [System.Collections.ArrayList]$ChocoModulesToImport = @()
-        foreach ($ModulePath in $ChocoModulesToImportPrep) {
-            if ($ModulePath -ne $null) {
-                $null = $ChocoModulesToImport.Add($ModulePath)
-            }
-        }
-
-        foreach ($ModulePath in $ChocoModulesToImport) {
-            Remove-Module -Name $([System.IO.Path]::GetFileNameWithoutExtension($ModulePath)) -ErrorAction SilentlyContinue
-            Import-Module -Name $ModulePath
-        }
+    if (-not @($CurrentChocoEnvVariables.Name) -match "ChocolateyInstall") {
+        $env:ChocolateyInstall = "C:\ProgramData\chocolatey"
+        $null = [Environment]::SetEnvironmentVariable("ChocolateyInstall", $env:ChocolateyInstall, "User")
+        $null = [Environment]::SetEnvironmentVariable("ChocolateyInstall", $env:ChocolateyInstall, "Machine")
     }
 
-    # Make sure we have ChocolateyInstall and ChocolateyPath environment variables are set
-    $env:ChocolateyInstall = "C:\ProgramData\chocolatey"
-    $env:ChocolateyPath = $env:ChocolateyInstall
-    $null = [Environment]::SetEnvironmentVariable("ChocolateyInstall", $env:ChocolateyInstall, "User")
-    $null = [Environment]::SetEnvironmentVariable("ChocolateyInstall", $env:ChocolateyInstall, "Machine")
-    $null = [Environment]::SetEnvironmentVariable("ChocolateyPath", $env:ChocolateyPath, "User")
-    $null = [Environment]::SetEnvironmentVariable("ChocolateyPath", $env:ChocolateyPath, "Machine")
-
-    # Ensure that we have an "extensions" folder under $env:ProgramData\chocolatey
-    if (Test-Path $env:ChocolateyPath) {
-        $ChocoExtensionsFolder = "$env:ProgramData\chocolatey\extensions"
-        if (!$(Test-Path $ChocoExtensionsFolder)) {
-            $null = New-Item -ItemType Directory -Path $ChocoExtensionsFolder
-        }
-        $ExtensionModules = Get-ChildItem "$env:ProgramData\chocolatey\lib" -Directory | Where-Object {$_.Name -match "\.extension\."}
-        foreach ($ModuleDirItem in $ExtensionModules) {
-            if (Test-Path "$ChocoExtensionsFolder\$($ModuleDirItem.Name)") {
-                $null = Remove-Item -Path "$ChocoExtensionsFolder\$($ModuleDirItem.Name)" -Recurse -Force
-            }
-            $null = Copy-Item -Path $ModuleDirItem.FullName -Destination $ChocoExtensionsFolder -Recurse -Force
-        }
-    }
-
-    $UpdatedEnvPath
+    $env:Path
 
     ##### END Main Body #####
 

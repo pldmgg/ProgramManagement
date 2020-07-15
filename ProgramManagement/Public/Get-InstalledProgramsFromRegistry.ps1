@@ -146,7 +146,7 @@ function Get-InstalledProgramsFromRegistry {
         }
 
         if ($ProgramTitleSearchTerm) {
-            $InstalledPrograms | Where-Object {$_.DisplayName -match "$ProgramTitleSearchTerm"}
+            $InstalledPrograms | Where-Object {$_.DisplayName -match $ProgramTitleSearchTerm}
         }
         else {
             $InstalledPrograms

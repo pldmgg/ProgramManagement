@@ -7,12 +7,6 @@
 
     .NOTES
 
-    .PARAMETER UpdatePackageManagement
-        This parameter is OPTIONAL.
-
-        This parameter is a switch. Use it to update PowerShellGet/PackageManagement Modules prior to attempting
-        Chocolatey CmdLine install.
-
     .EXAMPLE
         # Open an elevated PowerShell Session, import the module, and -
 
@@ -21,15 +15,12 @@
     .EXAMPLE
         # Open an elevated PowerShell Session, import the module, and -
         
-        PS C:\Users\zeroadmin> Install-ChocolateyCmdLine -UpdatePackageManagement
+        PS C:\Users\zeroadmin> Install-ChocolateyCmdLine
 
 #>
 function Install-ChocolateyCmdLine {
     [CmdletBinding()]
-    Param (
-        [Parameter(Mandatory=$False)]
-        [switch]$UpdatePackageManagement
-    )
+    Param ()
 
     ##### BEGIN Variable/Parameter Transforms and PreRun Prep #####
     # Invoke-WebRequest fix...
@@ -41,246 +32,49 @@ function Install-ChocolateyCmdLine {
         return
     }
 
-    Write-Host "Please wait..."
-    $global:FunctionResult = "0"
-    $MyFunctionsUrl = "https://raw.githubusercontent.com/pldmgg/misc-powershell/master/MyFunctions"
-
-    if ($UpdatePackageManagement) {
-        if (![bool]$(Get-Command Update-PackageManagement -ErrorAction SilentlyContinue)) {
-            $UpdatePMFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Update-PackageManagement.ps1"
-            try {
-                Invoke-Expression $([System.Net.WebClient]::new().DownloadString($UpdatePMFunctionUrl))
-            }
-            catch {
-                Write-Error $_
-                Write-Error "Unable to load the Update-PackageManagement function! Halting!"
-                $global:FunctionResult = "1"
-                return
-            }
-        }
-
-        try {
-            $global:FunctionResult = "0"
-            $UPMResult = Update-PackageManagement -AddChocolateyPackageProvider -ErrorAction SilentlyContinue -ErrorVariable UPMErr
-            if ($global:FunctionResult -eq "1" -or $UPMResult -eq $null) {throw "The Update-PackageManagement function failed!"}
-        }
-        catch {
-            Write-Error $_
-            Write-Host "Errors from the Update-PackageManagement function are as follows:"
-            Write-Error $($UPMErr | Out-String)
-            $global:FunctionResult = "1"
-            return
-        }
+    try {
+        Invoke-Expression $((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1')) -ErrorAction Stop
     }
-
-    if (![bool]$(Get-Command Update-ChocolateyEnv -ErrorAction SilentlyContinue)) {
-        $RefreshCEFunctionUrl = "$MyFunctionsUrl/PowerShellCore_Compatible/Update-ChocolateyEnv.ps1"
-        try {
-            Invoke-Expression $([System.Net.WebClient]::new().DownloadString($RefreshCEFunctionUrl))
-        }
-        catch {
-            Write-Error $_
-            Write-Error "Unable to load the Update-ChocolateyEnv function! Halting!"
-            $global:FunctionResult = "1"
-            return
-        }
+    catch {
+        Write-Error $_
+        return
     }
-
-    ##### END Variable/Parameter Transforms and PreRun Prep #####
-
-
-    ##### BEGIN Main Body #####
 
     if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
-        # The below Install-Package Chocolatey screws up $env:Path, so restore it afterwards
-        $OriginalEnvPath = $env:Path
+        # The above install.ps1 probably already updated PATH, but it may not be updated in this particular PowerShell session
+        # So, start a new PowerShell session and see if choco is available
+        $ChocoCheck = Start-Job -Name ChocoPathTest -ScriptBlock {Get-Command choco} | Wait-Job | Receive-Job
 
-        # Installing Package Providers is spotty sometimes...Using while loop 3 times before failing
-        $Counter = 0
-        while ($(Get-PackageProvider).Name -notcontains "Chocolatey" -and $Counter -lt 3) {
-            Install-PackageProvider -Name Chocolatey -Force -Confirm:$false -WarningAction SilentlyContinue
-            $Counter++
-            Start-Sleep -Seconds 5
-        }
-        if ($(Get-PackageProvider).Name -notcontains "Chocolatey") {
-            Write-Error "Unable to install the Chocolatey Package Provider / Repo for PackageManagement/PowerShellGet! Halting!"
-            $global:FunctionResult = "1"
-            return
-        }
-
-        if (![bool]$(Get-Package -Name Chocolatey -ProviderName Chocolatey -ErrorAction SilentlyContinue)) {
-            # NOTE: The PackageManagement install of choco is unreliable, so just in case, fallback to the Chocolatey cmdline for install
-            $null = Install-Package Chocolatey -Provider Chocolatey -Force -Confirm:$false -ErrorVariable ChocoInstallError -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
-            
-            if ($ChocoInstallError.Count -gt 0) {
-                Write-Warning "There was a problem installing the Chocolatey CmdLine via PackageManagement/PowerShellGet!"
-                $InstallViaOfficialScript = $True
-                Uninstall-Package Chocolatey -Force -ErrorAction SilentlyContinue
-            }
-
-            if ($ChocoInstallError.Count -eq 0) {
-                $PMPGetInstall = $True
-            }
-        }
-
-        # Try and find choco.exe
-        try {
-            Write-Host "Refreshing `$env:Path..."
-            $global:FunctionResult = "0"
-            $null = Update-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
-            
-            if ($RCEErr.Count -gt 0 -and
-            $global:FunctionResult -eq "1" -and
-            ![bool]$($RCEErr -match "Neither the Chocolatey PackageProvider nor the Chocolatey CmdLine appears to be installed!")) {
-                throw "The Update-ChocolateyEnv function failed! Halting!"
-            }
-        }
-        catch {
-            Write-Error $_
-            Write-Host "Errors from the Update-ChocolateyEnv function are as follows:"
-            Write-Error $($RCEErr | Out-String)
-            $global:FunctionResult = "1"
-            return
-        }
-
-        if ($PMPGetInstall) {
-            # It's possible that PowerShellGet didn't run the chocolateyInstall.ps1 script to actually install the
-            # Chocolatey CmdLine. So do it manually.
-            if (Test-Path "C:\Chocolatey") {
-                $ChocolateyPath = "C:\Chocolatey"
-            }
-            elseif (Test-Path "C:\ProgramData\chocolatey") {
-                $ChocolateyPath = "C:\ProgramData\chocolatey"
-            }
-            else {
-                Write-Warning "Unable to find Chocolatey directory! Halting!"
-                Write-Host "Installing via official script at https://chocolatey.org/install.ps1"
-                $InstallViaOfficialScript = $True
-            }
-            
-            if ($ChocolateyPath) {
-                $ChocolateyInstallScript = $(Get-ChildItem -Path $ChocolateyPath -Recurse -File -Filter "*chocolateyinstall.ps1").FullName | Where-Object {
-                    $_ -match ".*?chocolatey\.[0-9].*?chocolateyinstall.ps1$"
-                }
-
-                if (!$ChocolateyInstallScript) {
-                    Write-Warning "Unable to find chocolateyinstall.ps1!"
-                    $InstallViaOfficialScript = $True
-                }
-            }
-
-            if ($ChocolateyInstallScript) {
-                try {
-                    Write-Host "Trying PowerShellGet Chocolatey CmdLine install script from $ChocolateyInstallScript ..." -ForegroundColor Yellow
-                    & $ChocolateyInstallScript
-                }
-                catch {
-                    Write-Error $_
-                    Write-Error "The Chocolatey Install Script $ChocolateyInstallScript has failed!"
-
-                    if ([bool]$(Get-Package $ProgramName)) {
-                        Uninstall-Package Chocolatey -Force -ErrorAction SilentlyContinue
-                    }
-                }
-            }
-        }
-
-        # If we still can't find choco.exe, then use the Chocolatey install script from chocolatey.org
-        if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue) -or $InstallViaOfficialScript) {
-            $ChocolateyInstallScriptUrl = "https://chocolatey.org/install.ps1"
+        # $ChocoCheck.Source should return C:\ProgramData\chocolatey\bin\choco.exe
+        if (!$ChocoCheck) {
             try {
-                Invoke-Expression $([System.Net.WebClient]::new().DownloadString($ChocolateyInstallScriptUrl))
+                Write-Host "Refreshing `$env:Path..."
+                $null = Update-ChocolateyEnv -ErrorAction Stop
             }
             catch {
-                Write-Error $_
-                Write-Error "Unable to install Chocolatey via the official chocolatey.org script! Halting!"
-                $global:FunctionResult = "1"
-                return
-            }
-
-            $PMPGetInstall = $False
-        }
-        
-        # If we STILL can't find choco.exe, then Update-ChocolateyEnv a third time...
-        #if (![bool]$($env:Path -split ";" -match "chocolatey\\bin")) {
-        if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
-            # ...and then find it again and add it to $env:Path via Update-ChocolateyEnv function
-            if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
-                try {
-                    Write-Host "Refreshing `$env:Path..."
-                    $global:FunctionResult = "0"
-                    $null = Update-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
-                    
-                    if ($RCEErr.Count -gt 0 -and
-                    $global:FunctionResult -eq "1" -and
-                    ![bool]$($RCEErr -match "Neither the Chocolatey PackageProvider nor the Chocolatey CmdLine appears to be installed!")) {
-                        throw "The Update-ChocolateyEnv function failed! Halting!"
-                    }
-                }
-                catch {
-                    Write-Error $_
-                    Write-Host "Errors from the Update-ChocolateyEnv function are as follows:"
-                    Write-Error $($RCEErr | Out-String)
-                    $global:FunctionResult = "1"
-                    return
-                }
+                Write-Warning $_.Exception.Message
+                Write-Warning "Please start another PowerShell session in order to use the Chocolatey cmdline."
             }
         }
 
         # If we STILL can't find choco.exe, then give up...
         if (![bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
-            Write-Error "Unable to find choco.exe after install! Check your `$env:Path! Halting!"
-            $global:FunctionResult = "1"
-            return
+            Write-Warning "Please start another PowerShell session in order to use the Chocolatey cmdline."
         }
         else {
             Write-Host "Finished installing Chocolatey CmdLine." -ForegroundColor Green
 
             # Make sure we have the latest version
+            Write-Host "Ensuring we have the latest version of chocolatey..."
             cup chocolatey -y
-
-            try {
-                cup chocolatey-core.extension -y
-                cup chocolatey-windowsupdate.extension -y
-            }
-            catch {
-                Write-Error "Installation of chocolatey-core.extension via the Chocolatey CmdLine failed! Halting!"
-                $global:FunctionResult = "1"
-                return
-            }
-
-            try {
-                Write-Host "Refreshing `$env:Path..."
-                $global:FunctionResult = "0"
-                $null = Update-ChocolateyEnv -ErrorAction SilentlyContinue -ErrorVariable RCEErr
-                if ($RCEErr.Count -gt 0 -and $global:FunctionResult -eq "1") {
-                    throw "The Update-ChocolateyEnv function failed! Halting!"
-                }
-            }
-            catch {
-                Write-Error $_
-                Write-Host "Errors from the Update-ChocolateyEnv function are as follows:"
-                Write-Error $($RCEErr | Out-String)
-                $global:FunctionResult = "1"
-                return
-            }
-
-            $ChocoModulesThatRefreshEnvShouldHaveLoaded = @(
-                "chocolatey-core"
-                "chocolateyInstaller"
-                "chocolateyProfile"
-                "chocolateysetup"
-            )
-
-            foreach ($ModName in $ChocoModulesThatRefreshEnvShouldHaveLoaded) {
-                if ($(Get-Module).Name -contains $ModName) {
-                    #Write-Host "The $ModName Module has been loaded from $($(Get-Module -Name $ModName).Path)" -ForegroundColor Green
-                }
-            }
         }
     }
     else {
-        Write-Warning "The Chocolatey CmdLine is already installed!"
+        Write-Host "Finished installing Chocolatey CmdLine." -ForegroundColor Green
+
+        # Make sure we have the latest version
+        Write-Host "Ensuring we have the latest version of chocolatey..."
+        cup chocolatey -y
     }
 
     ##### END Main Body #####

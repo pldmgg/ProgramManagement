@@ -53,15 +53,31 @@ function UnzipFile {
                 if (Test-Path "$NewAssemblyDir\$assembly*.zip") {
                     Remove-Item "$NewAssemblyDir\$assembly*.zip" -Force
                 }
-                $OutFileBaseNamePrep = Invoke-WebRequest "https://www.nuget.org/api/v2/package/$assembly" -DisableKeepAlive -UseBasicParsing
-                $OutFileBaseName = $($OutFileBaseNamePrep.BaseResponse.ResponseUri.AbsoluteUri -split "/")[-1] -replace "nupkg","zip"
-                Invoke-WebRequest -Uri "https://www.nuget.org/api/v2/package/$assembly" -OutFile "$NewAssemblyDir\$OutFileBaseName"
-                Expand-Archive -Path "$NewAssemblyDir\$OutFileBaseName" -DestinationPath $NewAssemblyDir
+
+                $CurrentNugetAPIEndpointsPrep = (Invoke-RestMethod -uri 'https://api.nuget.org/v3/index.json' | Where-Object {$_.version -eq '3.0.0'}).resources
+                $CurrentNugetAPIEndpoints = $CurrentNugetAPIEndpointsPrep | Where-Object {$_.'@type' -like '*Registration*'} | Select-Object -Property '@id','@type'
+                $RegistrationsBaseUrl = $($CurrentNugetAPIEndpoints | Where-Object {$_.'@type' -eq 'RegistrationsBaseUrl'}).'@id'
+                $PackageNameLowercase = $assembly.ToLowerInvariant()
+                $RestResult = Invoke-RestMethod -Uri $($RegistrationsBaseUrl + $PackageNameLowercase + '/' + "index.json")
+                $LatestVerOfPackage = $($RestResult.items.upper | foreach { try {[version]$_} catch {} } | Sort-Object)[-1].ToString()
+                $DLLink = Invoke-RestMethod -Uri $($RegistrationsBaseUrl + $PackageNameLowercase + '/' + $LatestVerOfPackage + '.json').packageContent
+                $OutFileBaseNamePrep = $DLLink | Split-Path -Leaf
+                $OutFileBaseName = $OutFileBaseNamePrep -replace "nupkg","zip"
+                $OutFilePath = "$NewAssemblyDir\$OutFileBaseName"
+
+                [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls"
+                [System.Net.WebClient]::new().Downloadfile($DLLink, $OutFilePath)
+
+                #$OutFileBaseNamePrep = Invoke-WebRequest "https://www.nuget.org/api/v2/package/$assembly" -DisableKeepAlive -UseBasicParsing
+                #$OutFileBaseName = $($OutFileBaseNamePrep.BaseResponse.ResponseUri.AbsoluteUri -split "/")[-1] -replace "nupkg","zip"
+                #Invoke-WebRequest -Uri "https://www.nuget.org/api/v2/package/$assembly" -OutFile "$NewAssemblyDir\$OutFileBaseName"
+                
+                Expand-Archive -Path $OutFilePath -DestinationPath $NewAssemblyDir
 
                 $PossibleDLLs = Get-ChildItem -Recurse $NewAssemblyDir | Where-Object {$_.Name -eq "$assembly.dll" -and $_.Parent -notmatch "net[0-9]" -and $_.Parent -match "core|standard"}
 
                 if ($PossibleDLLs.Count -gt 1) {
-                    Write-Warning "More than one item within $NewAssemblyDir\$OutFileBaseName matches $assembly.dll"
+                    Write-Warning "More than one item within $OutFilePath matches $assembly.dll"
                     Write-Host "Matches include the following:"
                     for ($i=0; $i -lt $PossibleDLLs.Count; $i++){
                         "$i) $($($PossibleDLLs[$i]).FullName)"
@@ -91,7 +107,7 @@ function UnzipFile {
                     
                 }
                 if ($PossibleDLLs.Count -lt 1) {
-                    Write-Error "No matching .dll files were found within $NewAssemblyDir\$OutFileBaseName ! Halting!"
+                    Write-Error "No matching .dll files were found within $OutFilePath ! Halting!"
                     continue
                 }
                 if ($PossibleDLLs.Count -eq 1) {
@@ -108,7 +124,7 @@ function UnzipFile {
                     # Remove everything else that was extracted with Expand-Archive
                     Get-ChildItem -Recurse $NewAssemblyDir | Where-Object {
                         $_.FullName -ne "$NewAssemblyDir\$assembly.dll" -and
-                        $_.FullName -ne "$NewAssemblyDir\$OutFileBaseName"
+                        $_.FullName -ne $OutFilePath
                     } | Remove-Item -Recurse -Force
                 }
             }

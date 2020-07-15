@@ -88,15 +88,95 @@ if (Test-Path "$PSScriptRoot\module.requirements.psd1") {
 }
 
 if ($ModulesToInstallAndImport.Count -gt 0) {
-    # NOTE: If you're not sure if the Required Module is Locally Available or Externally Available,
-    # add it the the -RequiredModules string array just to be certain
-    $InvModDepSplatParams = @{
-        RequiredModules                     = $ModulesToInstallAndImport
-        InstallModulesNotAvailableLocally   = $True
-        ErrorAction                         = "SilentlyContinue"
-        WarningAction                       = "SilentlyContinue"
+    # Set $env:PSModulePath correctly
+    # Determine installed PowerShell Core Versions
+    $PSCoreDirItems = @(Get-ChildItem -Path "$env:ProgramFiles\Powershell" -Directory | Where-Object {$_.Name -match "[0-9]"})
+    $LatestPSCoreDirPath = $($PSCoreDirItems | Sort-Object -Property CreationTime)[-1].FullName
+    $PSCoreUserDocsModulePath = "$HOME\Documents\PowerShell\Modules"
+    $WinPSUserDocsModulePath = "$HOME\Documents\WindowsPowerShell\Modules"
+    $LatestPSCoreSystemPath = "$LatestPSCoreDirPath\Modules"
+    $LatestWinPSSystemPath = "$env:ProgramFiles\WindowsPowerShell\Modules"
+
+    $AllPSModulePaths = @(
+        $PSCoreUserDocsModulePath
+        $WinPSUserDocsModulePath
+        $($LatestPSCoreDirPath | Split-Path -Parent)
+        $LatestPSCoreSystemPath
+        $LatestWinPSSystemPath
+        "$env:SystemRoot\system32\WindowsPowerShell\v1.0\Modules"
+    )
+
+    foreach ($ModPath in $AllPSModulePaths) {
+        if (![bool]$($($env:PSModulePath -split ";") -match [regex]::Escape($ModPath))) {
+            $env:PSModulePath = "$ModPath;$env:PSModulePath"
+        }
     }
-    $ModuleDependenciesMap = InvokeModuleDependencies @InvModDepSplatParams
+
+    # Attempt to import the Module Dependencies
+    foreach ($ModuleName in $ModulesToInstallAndImport) {
+        # Make sure it's installed
+        $GetModResult = @(Get-Module -ListAvailable -Name $ModuleName)
+        if ($GetModResult.Count -eq 0) {
+            try {
+                $null = Install-Module -Name $ModuleName -Scope CurrentUser -AllowClobber -Force -ErrorAction Stop -WarningAction SilentlyContinue
+            }
+            catch {
+                # Try Manual Install
+                $DLDir = $([IO.Path]::Combine([IO.Path]::GetTempPath(), [IO.Path]::GetRandomFileName()) -split [regex]::Escape('.'))[0]
+                $null = [IO.Directory]::CreateDirectory($tempDirectory)
+
+                $InstallSplatParams = @{
+                    ModuleName          = $ModuleName
+                    DownloadDirectory   = $DLDir
+                    ErrorAction         = 'Stop'
+                    WarningAction       = 'SilentlyContinue'
+                }
+                
+                try {
+                    $null = ManualPSGalleryModuleInstall @InstallSplatParams
+                }
+                catch {
+                    try {
+                        # It might be a PreRelease
+                        $InstallSplatParams.Add('PreRelease',$True)
+                        $null = ManualPSGalleryModuleInstall @InstallSplatParams
+                    }
+                    catch {
+                        Write-Error "Problem installing Module dependency $ModuleName ! Halting!"
+                        return
+                    }
+                }
+            }
+
+            $GetModResult = @(Get-Module -ListAvailable -Name $ModuleName)
+            if ($GetModResult.Count -eq 0) {
+                Write-Error "Problem installing Module dependency $ModuleName ! Halting!"
+                return
+            }
+        }
+        
+        # Import the Module        
+        try {
+            Import-Module -Name $ModuleName -ErrorAction Stop
+        }
+        catch {
+            # If we're in PSCore, then we need to potentially try the -UseWindowsPowerShell switch
+            if ($PSVersionTable.PSEdition -eq "Core") {
+                try {
+                    Import-Module -Name $ModuleName -UseWindowsPowerShell -ErrorAction Stop
+                }
+                catch {
+                    Write-Error "Problem importing Module dependency $ModuleName ! Halting!"
+                    return
+                }
+            }
+            else {
+                Write-Error "Problem importing Module dependency $ModuleName ! Halting!"
+                return
+            }
+        }
+        
+    }
 }
 
 # Public Functions

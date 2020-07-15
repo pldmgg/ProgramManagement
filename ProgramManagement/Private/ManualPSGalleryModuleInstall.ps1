@@ -21,11 +21,40 @@ function ManualPSGalleryModuleInstall {
         return
     }
 
-    if (![bool]$($($env:PSModulePath -split ";") -match [regex]::Escape("$HOME\Documents\WindowsPowerShell\Modules"))) {
-        $env:PSModulePath = "$HOME\Documents\WindowsPowerShell\Modules;$env:PSModulePath"
+    # Determine installed PowerShell Core Versions
+    $PSCoreDirItems = @(Get-ChildItem -Path "$env:ProgramFiles\Powershell" -Directory | Where-Object {$_.Name -match "[0-9]"})
+    $LatestPSCoreDirPath = $($PSCoreDirItems | Sort-Object -Property CreationTime)[-1].FullName
+    $PSCoreUserDocsModulePath = "$HOME\Documents\PowerShell\Modules"
+    $WinPSUserDocsModulePath = "$HOME\Documents\WindowsPowerShell\Modules"
+    $LatestPSCoreSystemPath = "$LatestPSCoreDirPath\Modules"
+    $WinPSSystemPath = "$env:ProgramFiles\WindowsPowerShell\Modules"
+
+    $AllPSModulePaths = @(
+        $PSCoreUserDocsModulePath
+        $WinPSUserDocsModulePath
+        $($LatestPSCoreDirPath | Split-Path -Parent)
+        $LatestPSCoreSystemPath
+        $WinPSSystemPath
+        "$env:SystemRoot\system32\WindowsPowerShell\v1.0\Modules"
+    )
+
+    # For the Manual Install, we are going to place the Module in either $LatestPSCoreSystemPath or $WinPSSystemPath
+    # depending on the version of PowerShell that we are running
+    if ($PSVersionTable.PSVersion -gt 5) {
+        if (![bool]$($($env:PSModulePath -split ";") -match [regex]::Escape($LatestPSCoreSystemPath))) {
+            $env:PSModulePath = "$LatestPSCoreSystemPath;$env:PSModulePath"
+        }
+        if (!$(Test-Path $LatestPSCoreSystemPath)) {
+            $null = New-Item -ItemType Directory $LatestPSCoreSystemPath -Force
+        }
     }
-    if (!$(Test-Path "$HOME\Documents\WindowsPowerShell\Modules")) {
-        $null = New-Item -ItemType Directory "$HOME\Documents\WindowsPowerShell\Modules" -Force
+    if ($PSVersionTable.PSVersion -le 5) {
+        if (![bool]$($($env:PSModulePath -split ";") -match [regex]::Escape($WinPSSystemPath))) {
+            $env:PSModulePath = "$WinPSSystemPath;$env:PSModulePath"
+        }
+        if (!$(Test-Path $WinPSSystemPath)) {
+            $null = New-Item -ItemType Directory $WinPSSystemPath -Force
+        }
     }
 
     if ($PreRelease) {
@@ -51,9 +80,9 @@ function ManualPSGalleryModuleInstall {
 
     try {
         #Invoke-WebRequest $ModuleInfo.Content.src -OutFile $OutFilePath
-        # Download via System.Net.WebClient is a lot faster than Invoke-WebRequest...
-        $WebClient = [System.Net.WebClient]::new()
-        $WebClient.Downloadfile($ModuleInfo.Content.src, $OutFilePath)
+        # Download via System.Net.WebClient is a lot faster than Invoke-WebRequest and also doesn't rely on Internet Explorer engine...
+        [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls"
+        [System.Net.WebClient]::new().Downloadfile($ModuleInfo.Content.src, $OutFilePath)
     }
     catch {
         Write-Error $_
@@ -64,16 +93,28 @@ function ManualPSGalleryModuleInstall {
     if (Test-Path "$DownloadDirectory\$ModuleName") {Remove-Item "$DownloadDirectory\$ModuleName" -Recurse -Force}
     Expand-Archive $OutFilePath -DestinationPath "$DownloadDirectory\$ModuleName"
 
-    if ($DownloadDirectory -ne "$HOME\Documents\WindowsPowerShell\Modules") {
-        if (Test-Path "$HOME\Documents\WindowsPowerShell\Modules\$ModuleName") {
-            Remove-Item "$HOME\Documents\WindowsPowerShell\Modules\$ModuleName" -Recurse -Force
-        }
-        Copy-Item -Path "$DownloadDirectory\$ModuleName" -Recurse -Destination "$HOME\Documents\WindowsPowerShell\Modules"
+    if ($PSVersionTable.PSVersion -gt 5) {
+        if ($DownloadDirectory -ne $LatestPSCoreSystemPath) {
+            if (Test-Path "$LatestPSCoreSystemPath\$ModuleName") {
+                Remove-Item "$LatestPSCoreSystemPath\$ModuleName" -Recurse -Force
+            }
+            Copy-Item -Path "$DownloadDirectory\$ModuleName" -Recurse -Destination $LatestPSCoreSystemPath
 
-        Remove-Item "$DownloadDirectory\$ModuleName" -Recurse -Force
+            Remove-Item "$DownloadDirectory\$ModuleName" -Recurse -Force
+        }
+    }
+    if ($PSVersionTable.PSVersion -le 5) {
+        if ($DownloadDirectory -ne $WinPSSystemPath) {
+            if (Test-Path "$WinPSSystemPath\$ModuleName") {
+                Remove-Item "$WinPSSystemPath\$ModuleName" -Recurse -Force
+            }
+            Copy-Item -Path "$DownloadDirectory\$ModuleName" -Recurse -Destination $WinPSSystemPath
+
+            Remove-Item "$DownloadDirectory\$ModuleName" -Recurse -Force
+        }
     }
 
-    Remove-Item $OutFilePath -Force
+    #Remove-Item $OutFilePath -Force
 }
 
 # SIG # Begin signature block
