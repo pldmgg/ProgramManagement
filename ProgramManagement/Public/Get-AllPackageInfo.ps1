@@ -147,7 +147,6 @@ function Get-AllPackageInfo {
 
     # If the Chocolatey CmdLine is installed, get a list of programs installed via Chocolatey
     if ([bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
-        #$ChocolateyInstalledProgramsPrep = clist --local-only
         
         $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
         #$ProcessInfo.WorkingDirectory = $BinaryPath | Split-Path -Parent
@@ -155,7 +154,7 @@ function Get-AllPackageInfo {
         $ProcessInfo.RedirectStandardError = $true
         $ProcessInfo.RedirectStandardOutput = $true
         $ProcessInfo.UseShellExecute = $false
-        $ProcessInfo.Arguments = "--local-only"
+        $ProcessInfo.Arguments = "list"
         $Process = New-Object System.Diagnostics.Process
         $Process.StartInfo = $ProcessInfo
         $Process.Start() | Out-Null
