@@ -169,15 +169,14 @@ function Get-AllPackageInfo {
 
     # If the Chocolatey CmdLine is installed, get a list of programs installed via Chocolatey
     if ([bool]$(Get-Command choco -ErrorAction SilentlyContinue)) {
-        #$ChocolateyInstalledProgramsPrep = clist --local-only
         
         $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
         #$ProcessInfo.WorkingDirectory = $BinaryPath | Split-Path -Parent
-        $ProcessInfo.FileName = $(Get-Command clist).Source
+        $ProcessInfo.FileName = $(Get-Command choco).Source
         $ProcessInfo.RedirectStandardError = $true
         $ProcessInfo.RedirectStandardOutput = $true
         $ProcessInfo.UseShellExecute = $false
-        $ProcessInfo.Arguments = "--local-only"
+        $ProcessInfo.Arguments = "list"
         $Process = New-Object System.Diagnostics.Process
         $Process.StartInfo = $ProcessInfo
         $Process.Start() | Out-Null
@@ -1110,7 +1109,6 @@ function Install-Program {
 
     # Get-AllPackageInfo
     try {
-        #$null = clist --local-only
         $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction SilentlyContinue
         [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
         [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects
@@ -1417,7 +1415,7 @@ function Install-Program {
 
                 #$AllOutput | Export-CliXml "$HOME\CupInstallOutput.ps1"
                 
-                if (![bool]$($(clist --local-only $ProgramName) -match $ProgramName)) {
+                if (![bool]$($(choco list $ProgramName) -match $ProgramName)) {
                     if ($AllOutput -match "prerelease" -and $Arguments -notmatch '--pre') {
                         $CupArgs = "--pre -y"
                         $ChocoPrepScript = @(
@@ -1455,7 +1453,7 @@ function Install-Program {
                     }
                 }
                 
-                if (![bool]$($(clist --local-only $ProgramName) -match $ProgramName)) {
+                if (![bool]$($(choco list $ProgramName) -match $ProgramName)) {
                     throw "'cup $ProgramName $CupArgs' failed with the following Output:`n$AllOutputA`n$AllOutputB"
                 }
 
@@ -1473,7 +1471,7 @@ function Install-Program {
 
                 cup $ProgramName -y
 
-                if (![bool]$($(clist --local-only $ProgramName) -match $ProgramName)) {
+                if (![bool]$($(choco list $ProgramName) -match $ProgramName)) {
                     Write-Error "'cup $ProgramName -y' failed! Halting!"
                     Write-Warning "Please update Chocolatey via:`n    cup chocolatey -y"
                     $global:FunctionResult = "1"
@@ -1747,7 +1745,7 @@ function Install-Program {
                             $CheckInstallStatus.RegistryProperties.Count -ne 0)
                             ) {
                                 Write-Error "The PackageManagement/PowerShellGet installation did NOT uninstall cleanly!"
-                                Write-Warning "Please check...`n    Get-Package`n    clist --local-only`n    appwiz.cpl`n...for the following Programs...`n$($PackagesToUninstall -join "`n")"
+                                Write-Warning "Please check...`n    Get-Package`n    choco list`n    appwiz.cpl`n...for the following Programs...`n$($PackagesToUninstall -join "`n")"
                                 return
                             }
 
@@ -1928,7 +1926,7 @@ function Install-Program {
 
     if ($ChocoInstall) {
         $InstallManager = "choco.exe"
-        $InstallCheck = $(clist --local-only $ProgramName)[1]
+        $InstallCheck = $(choco list $ProgramName)[1]
     }
     if ($PMInstall -or [bool]$(Get-Package $ProgramName -ProviderName Chocolatey -ErrorAction SilentlyContinue)) {
         $InstallManager = "PowerShellGet"
@@ -2648,7 +2646,6 @@ function Uninstall-Program {
     }
 
     try {
-        #$null = clist --local-only
         $PackageManagerInstallObjects = Get-AllPackageInfo -ProgramName $ProgramName -ErrorAction SilentlyContinue
         [array]$ChocolateyInstalledProgramObjects = $PackageManagerInstallObjects.ChocolateyInstalledProgramObjects
         [array]$PSGetInstalledPackageObjects = $PackageManagerInstallObjects.PSGetInstalledPackageObjects

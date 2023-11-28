@@ -509,7 +509,7 @@ function Install-Program {
 
                 #$AllOutput | Export-CliXml "$HOME\CupInstallOutput.ps1"
                 
-                if (![bool]$($(clist --local-only $ProgramName) -match $ProgramName)) {
+                if (![bool]$($(choco list $ProgramName) -match $ProgramName)) {
                     throw "'cup $ProgramName $CupArgs' failed with the following Output:`n$AllOutputA`n$AllOutputB"
                 }
 
@@ -532,7 +532,7 @@ function Install-Program {
                     return
                 }
 
-                if (![bool]$($(clist --local-only $ProgramName) -match $ProgramName)) {
+                if (![bool]$($(choco list $ProgramName) -match $ProgramName)) {
                     Write-Warning "Please start a new PowerShell session and update Chocolatey via:`n    cup chocolatey -y"
                     Write-Error "'cup $ProgramName -y' failed! Halting!"
                     return
@@ -630,7 +630,7 @@ function Install-Program {
 
     if ($UseChocoCheck) {
         $InstallManager = "choco.exe"
-        $InstallCheck = $(clist --local-only $ProgramName)[1]
+        $InstallCheck = $(choco list $ProgramName)[1]
     }
     if ($PMInstall -or [bool]$(Get-Package $ProgramName -ErrorAction SilentlyContinue)) {
         $InstallManager = "PowerShellGet"
